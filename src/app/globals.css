@@ -1,0 +1,67 @@
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  html {
+    color-scheme: dark;
+  }
+}
+/* Scrollbar moderno (WebKit: Chrome, Edge, Safari) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f2f6fa; /* gris muy claro */
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #90caf9, #64b5f6); /* azul suave degradado */
+  border-radius: 10px;
+  border: 2px solid #f2f6fa; /* crea espacio y suavidad */
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #64b5f6, #42a5f5); /* azul un poco más intenso al pasar el mouse */
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin; /* fino */
+  scrollbar-color: #90caf9 #f2f6fa; /* thumb azul / track gris claro */
+}
