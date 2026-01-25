@@ -122,8 +122,11 @@
 .fecha {
   color: #003563;
   font-weight: bold;
+  font-size: 13px;
 }
-
+.fechahijo {
+  font-weight: 600;
+}
 .video-container {
   position: relative;
   width: 100%;
