@@ -325,6 +325,7 @@ export default function Home() {
           longitude: ubicacion.lon,
           enSede: dentroArea(ubicacion.lat, ubicacion.lon),
           rangodif: rango,
+          ubicacionMarcada: direccionActual,
           tipoMarcaje,
         }),
       });

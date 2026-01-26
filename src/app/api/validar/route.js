@@ -6,7 +6,7 @@ import * as faceapi from 'face-api.js';
 
 export async function POST(req) {
   try {
-    const { id_usuario, descriptor, latitude, longitude, tipoMarcaje, enSede, rangodif } = await req.json();
+    const { id_usuario, descriptor, latitude, longitude, tipoMarcaje, enSede, rangodif, direccionActual } = await req.json();
     if (!descriptor) throw new Error('Faltan datos');
 
     const pool = await getPool();
@@ -50,11 +50,12 @@ export async function POST(req) {
       .request()
       .input('id_usuario', sql.BigInt, id_usuario)
       .input('resultado', sql.Bit, 1)
-      .input('tipoMarcaje', sql.VarChar(100), String(tipoMarcaje || ''))
-      .input('lat', sql.VarChar(100), String(latitude || ''))
-      .input('lon', sql.VarChar(100), String(longitude || ''))
-      .input('enSede', sql.VarChar(100), String(enSede || ''))
-      .input('rangodif', sql.VarChar(100), String(rangodif || ''))
+      .input('tipoMarcaje', sql.VarChar(1000), String(tipoMarcaje || ''))
+      .input('lat', sql.VarChar(1000), String(latitude || ''))
+      .input('lon', sql.VarChar(1000), String(longitude || ''))
+      .input('enSede', sql.VarChar(1000), String(enSede || ''))
+      .input('rangodif', sql.VarChar(1000), String(rangodif || ''))
+      .input('direccionActual', sql.VarChar(1000), String(direccionActual || ''))
       .execute('RRHH.ST_ValidacionAsistencia');
 
     return new Response(
