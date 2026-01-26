@@ -332,7 +332,7 @@ export default function Home() {
       const data = await res.json();
       if (data.ok) {
         if (data.coincide == 1) {
-          if (audioRef.current) audioRef.current.play();
+          // if (audioRef.current) audioRef.current.play();
           stopCamera();
           setMensaje2(data.mensaje);
           router.push('/about');
