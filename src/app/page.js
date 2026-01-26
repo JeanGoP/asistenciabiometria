@@ -57,6 +57,26 @@ export default function Home() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  useEffect(() => {
+    setMensaje2('📡 Cargando su informacion, Por favor espere...');
+    if (!navigator.geolocation) {
+      console.log('Geolocalización no soportada por el navegador');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setUbicacion({ lat: latitude, lon: longitude });
+        console.log('📍 Mi ubicación actual:', latitude, longitude);
+      },
+      (error) => {
+        console.error('❌ Error al obtener geolocalización:', error.message);
+      },
+      { enableHighAccuracy: true }
+    );
+  }, []);
+
   const ObtenerTipos = async () => {
     try {
       const res = await fetch('/api/ListadoMarcajes', {
@@ -175,29 +195,11 @@ export default function Home() {
   const horaFormateada = hora?.toString().substring(0, 5);
 
   useEffect(() => {
-    setMensaje2('📡 Cargando su informacion, Por favor espere...');
-    if (!navigator.geolocation) {
-      console.log('Geolocalización no soportada por el navegador');
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        setUbicacion({ lat: latitude, lon: longitude });
-        console.log('📍 Mi ubicación actual:', latitude, longitude);
-      },
-      (error) => {
-        console.error('❌ Error al obtener geolocalización:', error.message);
-      },
-      { enableHighAccuracy: true }
-    );
-  }, []);
-
-  useEffect(() => {
     setMensaje2('📡 Obteniendo ubicación, espera un momento...');
-    const direubi = coordenadasATexto(ubicacion.lat, ubicacion.lon);
-    setDireccionActual(direubi);
+    if (ubicacion.lon) {
+      const direubi = coordenadasATexto(ubicacion.lat, ubicacion.lon);
+      setDireccionActual(direubi);
+    }
   }, [ubicacion]);
 
   useEffect(() => {
@@ -331,6 +333,8 @@ export default function Home() {
       });
 
       const data = await res.json();
+      console.log(data);
+
       if (data.ok) {
         if (data.coincide == 1) {
           // if (audioRef.current) audioRef.current.play();
@@ -350,6 +354,8 @@ export default function Home() {
           setMensaje2(data.mensaje);
           // setLoadingInit(false);
         }
+      } else {
+        router.push('/error');
       }
     } catch (err) {
       console.error(err);
