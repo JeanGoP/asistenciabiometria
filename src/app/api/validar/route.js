@@ -6,7 +6,7 @@ import * as faceapi from 'face-api.js';
 
 export async function POST(req) {
   try {
-    const { id_usuario, descriptor, latitude, longitude, tipoMarcaje, enSede, rangodif, direccionActual } = await req.json();
+    const { id_usuario, descriptor, latitude, longitude, tipoMarcaje, enSede, rangodif, ubicacionMarcada } = await req.json();
     if (!descriptor) throw new Error('Faltan datos');
 
     const pool = await getPool();
@@ -55,7 +55,7 @@ export async function POST(req) {
       .input('lon', sql.VarChar(1000), String(longitude || ''))
       .input('enSede', sql.VarChar(1000), String(enSede || ''))
       .input('rangodif', sql.VarChar(1000), String(rangodif || ''))
-      .input('direccionActual', sql.VarChar(1000), String(direccionActual || ''))
+      .input('direccionActual', sql.VarChar(1000), String(ubicacionMarcada || ''))
       .execute('RRHH.ST_ValidacionAsistencia');
 
     return new Response(
