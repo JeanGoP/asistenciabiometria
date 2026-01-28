@@ -193,13 +193,22 @@ export default function Home() {
     ValidarMarcaje(cedula, op.CODE);
   };
   const horaFormateada = hora?.toString().substring(0, 5);
-
   useEffect(() => {
-    setMensaje2('📡 Obteniendo ubicación, espera un momento...');
-    if (ubicacion.lon) {
-      const direubi = coordenadasATexto(ubicacion.lat, ubicacion.lon);
-      setDireccionActual(direubi);
-    }
+    const obtenerDireccion = async () => {
+      setMensaje2('📡 Obteniendo ubicación, espera un momento...');
+
+      if (ubicacion.lat && ubicacion.lon) {
+        try {
+          const direubi = await coordenadasATexto(ubicacion.lat, ubicacion.lon);
+          setDireccionActual(direubi);
+        } catch (error) {
+          console.error(error);
+          setDireccionActual('No se pudo obtener la dirección');
+        }
+      }
+    };
+
+    obtenerDireccion();
   }, [ubicacion]);
 
   useEffect(() => {
@@ -331,7 +340,6 @@ export default function Home() {
           tipoMarcaje,
         }),
       });
-
       const data = await res.json();
       console.log(data);
 
@@ -359,7 +367,7 @@ export default function Home() {
       }
     } catch (err) {
       console.error(err);
-      setMessage('❌ Error en validarPersona');
+      console.log('❌ Error en validarPersona');
     }
   };
 
