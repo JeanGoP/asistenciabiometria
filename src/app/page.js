@@ -665,7 +665,12 @@ export default function Home() {
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
                 <ScanFace size={34} color="#fff" />
                 <div>
-                  <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: 1 }}>CONTROL BIOMÉTRICO</h1>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: 1 }}>CONTROL BIOMÉTRICO</h1>
+                    <span style={{ fontSize: 10, fontWeight: 700, background: "rgba(255,255,255,0.2)", borderRadius: 6, padding: "2px 7px", letterSpacing: 0.5 }}>
+                      v{process.env.NEXT_PUBLIC_VERSION}
+                    </span>
+                  </div>
                   <p style={{ margin: 0, fontSize: 12, opacity: 0.85 }}>
                     {fechaActual} · {horaActual}
                   </p>
