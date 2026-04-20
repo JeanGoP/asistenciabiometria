@@ -1,9 +1,10 @@
-'use client';
-import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import './indexPrincipal.css';
-import * as faceapi from 'face-api.js';
-import { useAppContext } from '@/context/AppContext';
+"use client";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import "./indexPrincipal.css";
+import * as faceapi from "face-api.js";
+import { useAppContext } from "@/context/AppContext";
+import { ScanFace, User, MapPin, Clock, TriangleAlert, Smile, ArrowLeftRight, Crosshair, LogIn, LogOut, Utensils, ClipboardList, CircleDot, CheckCircle2 } from "lucide-react";
 
 export default function Home() {
   const videoRef = useRef(null);
@@ -15,10 +16,10 @@ export default function Home() {
   const [loadingInit, setLoadingInit] = useState(true);
   const [loadingTipos, setLoadingTipos] = useState(true);
   const [listado, setListado] = useState([]);
-  const [reto, setReto] = useState('');
-  const [ultimoReto, setUltimoReto] = useState('');
-  const [mensaje, setMensaje] = useState('');
-  const [mensaje2, setMensaje2] = useState('');
+  const [reto, setReto] = useState("");
+  const [ultimoReto, setUltimoReto] = useState("");
+  const [mensaje, setMensaje] = useState("");
+  const [mensaje2, setMensaje2] = useState("");
   const [validando, setValidando] = useState(false);
   const [contador, setContador] = useState(0);
   const [timerId, setTimerId] = useState(null);
@@ -28,7 +29,9 @@ export default function Home() {
   const [tiporegistro, setTiporegistro] = useState(false);
   const [giroDetectado, setGiroDetectado] = useState(false);
   const canvasRef = useRef(null);
-  const [cedula, setCedula] = useState('');
+  const isDetectingRef = useRef(false);
+  const [cedula, setCedula] = useState("");
+  const [errorCedula, setErrorCedula] = useState("");
   const [iniciarProceso, setIniciarProceso] = useState(false);
   const [tipoSMarcaje, setTipoMarcaje] = useState([]);
   const [tpMarca, setTpMarca] = useState([]);
@@ -53,14 +56,14 @@ export default function Home() {
 
     handleResize();
 
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   useEffect(() => {
-    setMensaje2('📡 Cargando su informacion, Por favor espere...');
+    setMensaje2("📡 Cargando su informacion, Por favor espere...");
     if (!navigator.geolocation) {
-      console.log('Geolocalización no soportada por el navegador');
+      console.log("Geolocalización no soportada por el navegador");
       return;
     }
 
@@ -68,20 +71,20 @@ export default function Home() {
       (position) => {
         const { latitude, longitude } = position.coords;
         setUbicacion({ lat: latitude, lon: longitude });
-        console.log('📍 Mi ubicación actual:', latitude, longitude);
+        console.log("📍 Mi ubicación actual:", latitude, longitude);
       },
       (error) => {
-        console.error('❌ Error al obtener geolocalización:', error.message);
+        console.error("❌ Error al obtener geolocalización:", error.message);
       },
-      { enableHighAccuracy: true }
+      { enableHighAccuracy: true },
     );
   }, []);
 
   const ObtenerTipos = async () => {
     try {
-      const res = await fetch('/api/ListadoMarcajes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/ListadoMarcajes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
       });
       const data = await res.json();
       if (data.ok) {
@@ -90,7 +93,7 @@ export default function Home() {
       }
     } catch (error) {
       console.error(error);
-      console.log('Error al registrar la persona');
+      console.log("Error al registrar la persona");
     }
   };
 
@@ -117,12 +120,14 @@ export default function Home() {
   const estaDentroArea = rango !== null && rango <= geoPermitida.radio;
 
   async function startCamera() {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+    });
     if (videoRef.current) videoRef.current.srcObject = stream;
-    await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
-    await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
-    await faceapi.nets.faceRecognitionNet.loadFromUri('/models');
-    await faceapi.nets.faceExpressionNet.loadFromUri('/models');
+    await faceapi.nets.tinyFaceDetector.loadFromUri("/models");
+    await faceapi.nets.faceLandmark68Net.loadFromUri("/models");
+    await faceapi.nets.faceRecognitionNet.loadFromUri("/models");
+    await faceapi.nets.faceExpressionNet.loadFromUri("/models");
     setModelosCargados(true);
   }
 
@@ -143,59 +148,74 @@ export default function Home() {
       const tipoMarcaje = tipoMarcaje2;
       setIniciarProceso(true);
       setLoadingInit(true);
-      const res = await fetch('/api/validarMarcaje', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      setMensaje2("Verificando tu información...");
+
+      const res = await fetch("/api/validarMarcaje", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id_usuario, tipoMarcaje }),
       });
+      console.log(res);
+
       const data = await res.json();
-      if (data.ok) {
-        setGeoPermitida({
-          lat: parseFloat(data.result.lat),
-          lon: parseFloat(data.result.lon),
-          radio: 300,
-        });
-        setDireccion(data.result.direccion);
-        setHora(data.result.horario);
-        if (data.result.ExistsUser === '0') {
-          router.push('/notFoundUser');
-        } else {
-          if (data.result.isregistrado === '0') {
-            setLoadingInit();
-            setUsuario(id_usuario);
-            router.push(`/registrarUSer?iosono=${id_usuario}`);
-          } else {
-            if (data.result.marcado === '1') {
-              router.push('/about');
-              stopCamera();
-              return;
-            }
-            if (data.result.marcado === '0') {
-              startCamera();
-              setMensaje2('');
-              setLoadingInit();
-            }
-          }
-        }
+      console.log(data);
+      if (!data.ok || !data.result || Object.keys(data.result).length === 0) {
+        setErrorCedula("Cédula no encontrada. Verifica el número ingresado.");
+        setIniciarProceso(false);
+        setLoadingInit(true);
+        return;
       }
+
+      setGeoPermitida({
+        lat: parseFloat(data.result.lat),
+        lon: parseFloat(data.result.lon),
+        radio: 300,
+      });
+      setDireccion(data.result.direccion);
+      setHora(data.result.horario);
+
+      if (String(data.result.ExistsUser) === "0") {
+        router.push("/notFoundUser");
+        return;
+      }
+
+      if (String(data.result.isregistrado) === "0") {
+        setUsuario(id_usuario);
+        router.push(`/registrarUSer?iosono=${id_usuario}`);
+        return;
+      }
+
+      if (String(data.result.marcado) === "1") {
+        router.push("/about");
+        return;
+      }
+
+      // Usuario existe, registrado y sin marcaje hoy → abrir cámara
+      setMensaje2("Activando cámara...");
+      startCamera();
+      setLoadingInit(false);
+      setMensaje2("");
     } catch (error) {
       console.error(error);
-      console.log('Error al registrar la persona');
+      setErrorCedula("Error de conexión. Verifica tu red e intenta de nuevo.");
+      setIniciarProceso(false);
+      setLoadingInit(true);
     }
   };
 
   const handleStart = (op) => {
     if (!cedula || !op.CODE) {
-      alert('⚠️ Debes ingresar tu cédula y seleccionar un tipo de registro.');
+      alert("⚠️ Debes ingresar tu cédula y seleccionar un tipo de registro.");
       return;
     }
     setTpMarca(op.CODE);
     ValidarMarcaje(cedula, op.CODE);
   };
   const horaFormateada = hora?.toString().substring(0, 5);
+
   useEffect(() => {
     const obtenerDireccion = async () => {
-      setMensaje2('📡 Obteniendo ubicación, espera un momento...');
+      setMensaje2("📡 Obteniendo ubicación, espera un momento...");
 
       if (ubicacion.lat && ubicacion.lon) {
         try {
@@ -203,7 +223,7 @@ export default function Home() {
           setDireccionActual(direubi);
         } catch (error) {
           console.error(error);
-          setDireccionActual('No se pudo obtener la dirección');
+          setDireccionActual("No se pudo obtener la dirección");
         }
       }
     };
@@ -212,16 +232,153 @@ export default function Home() {
   }, [ubicacion]);
 
   useEffect(() => {
-    audioRef.current = new Audio('/sounds/welcome.mp3');
+    audioRef.current = new Audio("/sounds/welcome.mp3");
     console.log(isregistro);
-    setTiporegistro(isregistro === 'true');
+    setTiporegistro(isregistro === "true");
   }, [isregistro]);
 
-  const obtenerDescriptor = async () => {
+  // Fase 1: detección rápida para el loop (sin descriptor = ~4x más rápido)
+  const obtenerDeteccionRapida = async () => {
     if (!videoRef.current) return null;
-    const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 128, scoreThreshold: 0.5 });
-    const deteccion = await faceapi.detectSingleFace(videoRef.current, options).withFaceLandmarks().withFaceDescriptor().withFaceExpressions();
-    return deteccion || null;
+    const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.4 });
+    return (await faceapi.detectSingleFace(videoRef.current, options).withFaceLandmarks().withFaceExpressions()) || null;
+  };
+
+  // Fase 2: extracción del descriptor (solo se llama UNA vez al completar el reto)
+  const obtenerDescriptorFinal = async () => {
+    if (!videoRef.current) return null;
+    const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.4 });
+    return (await faceapi.detectSingleFace(videoRef.current, options).withFaceLandmarks().withFaceDescriptor()) || null;
+  };
+
+  const dibujarGuiaRostro = (ctx, canvasWidth, canvasHeight) => {
+    const cx = canvasWidth / 2;
+    const cy = canvasHeight * 0.45;
+    const rx = canvasWidth * 0.22;
+    const ry = canvasHeight * 0.32;
+
+    // Fondo semitransparente fuera del óvalo
+    ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    // Recorte del óvalo (zona clara)
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    ctx.restore();
+
+    // Borde del óvalo punteado animado
+    ctx.save();
+    ctx.setLineDash([12, 8]);
+    ctx.lineDashOffset = -(Date.now() / 60) % 20;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = "#fff";
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    // Texto de instrucción
+    ctx.save();
+    ctx.fillStyle = "rgba(255,255,255,0.95)";
+    ctx.font = `bold ${Math.round(canvasWidth * 0.038)}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.shadowColor = "rgba(0,0,0,0.6)";
+    ctx.shadowBlur = 6;
+    ctx.fillText("Ubica tu rostro aquí", cx, cy + ry + canvasHeight * 0.07);
+    ctx.restore();
+  };
+
+  const dibujarFeedbackDistancia = (ctx, box, canvasW, canvasH) => {
+    const ratio = box.width / canvasW;
+
+    let texto, flecha, color;
+    if (ratio < 0.2) {
+      texto = "Acércate a la cámara";
+      flecha = "▲";
+      color = "#ff9800";
+    } else if (ratio > 0.6) {
+      texto = "Aléjate un poco";
+      flecha = "▼";
+      color = "#ff5722";
+    } else {
+      return;
+    }
+
+    const fontSize = Math.round(canvasW * 0.048);
+    const py = box.y > canvasH * 0.5 ? box.y - 18 : box.y + box.height + fontSize + 10;
+
+    ctx.save();
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.shadowColor = "rgba(0,0,0,0.8)";
+    ctx.shadowBlur = 8;
+
+    // Fondo pastilla
+    const label = `${flecha}  ${texto}  ${flecha}`;
+    const metrics = ctx.measureText(label);
+    const pw = metrics.width + 24;
+    const ph = fontSize + 14;
+    const px = canvasW / 2 - pw / 2;
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.beginPath();
+    ctx.roundRect(px, py - ph + 4, pw, ph, 8);
+    ctx.fill();
+
+    ctx.fillStyle = color;
+    ctx.shadowBlur = 4;
+    ctx.fillText(label, canvasW / 2, py);
+    ctx.restore();
+  };
+
+  const dibujarRecuadroRostro = (ctx, box, estado) => {
+    const { x, y, width, height } = box;
+    const cornerLen = Math.min(width, height) * 0.22;
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+
+    const color = estado === "cumplido" ? "#00e676" : estado === "validando" ? "#ffeb3b" : "#00e5ff";
+
+    ctx.strokeStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 12;
+
+    const esquinas = [
+      [
+        [x, y + cornerLen],
+        [x, y],
+        [x + cornerLen, y],
+      ],
+      [
+        [x + width - cornerLen, y],
+        [x + width, y],
+        [x + width, y + cornerLen],
+      ],
+      [
+        [x, y + height - cornerLen],
+        [x, y + height],
+        [x + cornerLen, y + height],
+      ],
+      [
+        [x + width - cornerLen, y + height],
+        [x + width, y + height],
+        [x + width, y + height - cornerLen],
+      ],
+    ];
+
+    esquinas.forEach(([start, corner, end]) => {
+      ctx.beginPath();
+      ctx.moveTo(...start);
+      ctx.lineTo(...corner);
+      ctx.lineTo(...end);
+      ctx.stroke();
+    });
+
+    ctx.shadowBlur = 0;
   };
 
   const coordenadasATexto = async (lat, lon) => {
@@ -230,7 +387,7 @@ export default function Home() {
 
       const res = await fetch(url, {
         headers: {
-          'User-Agent': 'MiApp/1.0',
+          "User-Agent": "MiApp/1.0",
         },
       });
 
@@ -240,7 +397,7 @@ export default function Home() {
 
       return data.display_name;
     } catch (error) {
-      console.error('Error reverse geocoding:', error);
+      console.error("Error reverse geocoding:", error);
       return null;
     }
   };
@@ -267,9 +424,9 @@ export default function Home() {
       setContador((prev) => {
         if (prev <= 1) {
           clearInterval(id);
-          setMensaje('⏱️ Tiempo agotado, intenta de nuevo');
+          setMensaje("⏱️ Tiempo agotado, intenta de nuevo");
           setValidando(false);
-          setReto('');
+          setReto("");
           setParpadeos(0);
           setGiroDetectado(false);
           return 0;
@@ -281,14 +438,14 @@ export default function Home() {
   };
 
   const generarReto = () => {
-    const retos = ['Sonreír', 'Mover la cabeza'];
+    const retos = ["Sonreír", "Mover la cabeza"];
     let nuevoReto = retos[Math.floor(Math.random() * retos.length)];
     while (nuevoReto === ultimoReto) {
       nuevoReto = retos[Math.floor(Math.random() * retos.length)];
     }
     setReto(nuevoReto);
     setUltimoReto(nuevoReto);
-    setMensaje('');
+    setMensaje("");
     setValidando(true);
     setParpadeos(0);
     setGiroDetectado(false);
@@ -296,9 +453,9 @@ export default function Home() {
   };
 
   const reiniciarSistema = () => {
-    setReto('');
-    setUltimoReto('');
-    setMensaje('');
+    setReto("");
+    setUltimoReto("");
+    setMensaje("");
     setValidando(false);
     setParpadeos(0);
     setGiroDetectado(false);
@@ -311,24 +468,37 @@ export default function Home() {
   const validarPersona = async (descriptor) => {
     try {
       if (!descriptor || descriptor.length === 0) {
-        setMensaje2('❌ No se detectó el rostro. Intenta de nuevo.');
+        setMensaje2("❌ No se detectó el rostro. Intenta de nuevo.");
         return;
       }
       const id_usuario = cedula;
       const tipoMarcaje = tpMarca;
 
       if (!id_usuario) {
-        setMensaje2('❌ No se encontró el usuario.');
+        setMensaje2("❌ No se encontró el usuario.");
         return;
       }
       if (!tipoMarcaje) {
-        setMensaje2('❌ No se encontró el tipo de marcaje.');
+        setMensaje2("❌ No se encontró el tipo de marcaje.");
         return;
       }
+      console.log(
+        JSON.stringify({
+          id_usuario,
+          descriptor: Array.from(descriptor),
+          latitude: ubicacion.lat,
+          longitude: ubicacion.lon,
+          enSede: dentroArea(ubicacion.lat, ubicacion.lon),
+          rangodif: rango,
+          ubicacionMarcada: direccionActual,
+          tipoMarcaje,
+        }),
+      );
+      console.log("Estoy en el metodo");
 
-      const res = await fetch('/api/validar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/validar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id_usuario,
           descriptor: Array.from(descriptor),
@@ -341,14 +511,13 @@ export default function Home() {
         }),
       });
       const data = await res.json();
-      console.log(data);
 
       if (data.ok) {
         if (data.coincide == 1) {
           // if (audioRef.current) audioRef.current.play();
           stopCamera();
           setMensaje2(data.mensaje);
-          router.push('/about');
+          router.push("/about");
         }
         if (data.coincide == 0) {
           stopCamera();
@@ -363,11 +532,11 @@ export default function Home() {
           // setLoadingInit(false);
         }
       } else {
-        router.push('/error');
+        router.push("/error");
       }
     } catch (err) {
       console.error(err);
-      console.log('❌ Error en validarPersona');
+      console.log("❌ Error en validarPersona");
     }
   };
 
@@ -376,67 +545,81 @@ export default function Home() {
     if (!videoRef.current) return;
 
     let intervalo = setInterval(async () => {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
+      if (isDetectingRef.current) return;
+      isDetectingRef.current = true;
 
-      if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
-        return;
-      }
-      if (!canvas) return;
+      try {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
 
-      const deteccion = await obtenerDescriptor();
+        if (!video || video.videoWidth === 0 || video.videoHeight === 0) return;
+        if (!canvas) return;
 
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const deteccion = await obtenerDeteccionRapida();
 
-      if (!deteccion) {
-        setRostroPresente(false);
-        return;
-      }
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      setRostroPresente(true);
-
-      const displaySize = {
-        width: video.videoWidth,
-        height: video.videoHeight,
-      };
-
-      faceapi.matchDimensions(canvas, displaySize);
-
-      const resizedDetections = faceapi.resizeResults(deteccion, displaySize);
-      faceapi.draw.drawDetections(canvas, resizedDetections);
-
-      if (!validando) generarReto();
-
-      if (validando) {
-        if (reto === 'Sonreír' && deteccion.expressions.happy > 0.7) {
-          setMensaje('✅✅ Reto cumplido: Sonrisa detectada');
-          setValidando(false);
-          if (timerId) clearInterval(timerId);
-          validarPersona(deteccion.descriptor);
-          setLoadingInit(true);
-          stopCamera();
+        if (!deteccion) {
+          setRostroPresente(false);
+          faceapi.matchDimensions(canvas, { width: video.videoWidth, height: video.videoHeight });
+          dibujarGuiaRostro(ctx, canvas.width, canvas.height);
+          return;
         }
 
-        if (reto === 'Mover la cabeza') {
-          const nose = deteccion.landmarks.getNose();
-          const noseX = nose[3].x;
-          const box = deteccion.detection.box;
-          const centerX = box.x + box.width / 2;
-          const desplazamiento = noseX - centerX;
+        setRostroPresente(true);
 
-          if (Math.abs(desplazamiento) > 30 && !giroDetectado) {
-            setGiroDetectado(true);
-            setMensaje('✅✅ Reto cumplido: Movimiento detectado');
+        const displaySize = { width: video.videoWidth, height: video.videoHeight };
+        faceapi.matchDimensions(canvas, displaySize);
+        const resized = faceapi.resizeResults(deteccion, displaySize);
+        const box = resized.detection.box;
+
+        const ratio = box.width / canvas.width;
+        const distanciaOk = ratio >= 0.2 && ratio <= 0.6;
+
+        const estadoRecuadro = !validando ? "presente" : "validando";
+        dibujarRecuadroRostro(ctx, box, estadoRecuadro);
+        dibujarFeedbackDistancia(ctx, box, canvas.width, canvas.height);
+
+        if (!validando && distanciaOk) generarReto();
+
+        if (validando) {
+          if (reto === "Sonreír" && deteccion.expressions.happy > 0.7) {
+            dibujarRecuadroRostro(ctx, box, "cumplido");
             setValidando(false);
             if (timerId) clearInterval(timerId);
-            validarPersona(deteccion.descriptor);
-            setLoadingInit(true);
+
+            const finalSonrisa = await obtenerDescriptorFinal();
             stopCamera();
+            setLoadingInit(true);
+            setMensaje("✅✅ Reto cumplido: Sonrisa detectada");
+            if (finalSonrisa) validarPersona(finalSonrisa.descriptor);
+          }
+
+          if (reto === "Mover la cabeza") {
+            const nose = deteccion.landmarks.getNose();
+            const noseX = nose[3].x;
+            const centerX = deteccion.detection.box.x + deteccion.detection.box.width / 2;
+            const desplazamiento = noseX - centerX;
+
+            if (Math.abs(desplazamiento) > 30 && !giroDetectado) {
+              dibujarRecuadroRostro(ctx, box, "cumplido");
+              setGiroDetectado(true);
+              setValidando(false);
+              if (timerId) clearInterval(timerId);
+
+              const finalGiro = await obtenerDescriptorFinal();
+              stopCamera();
+              setLoadingInit(true);
+              setMensaje("✅✅ Reto cumplido: Movimiento detectado");
+              if (finalGiro) validarPersona(finalGiro.descriptor);
+            }
           }
         }
+      } finally {
+        isDetectingRef.current = false;
       }
-    }, 1000);
+    }, 150);
 
     return () => clearInterval(intervalo);
   }, [reto, modelosCargados, validando, rostroPresente, parpadeos, ojosCerrados, giroDetectado]);
@@ -444,8 +627,8 @@ export default function Home() {
   const formatFechaHora = (isoString) => {
     const date = new Date(isoString);
     return {
-      fecha: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`,
-      hora: `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`,
+      fecha: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`,
+      hora: `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}:${String(date.getSeconds()).padStart(2, "0")}`,
     };
   };
 
@@ -457,162 +640,310 @@ export default function Home() {
     });
   });
 
+  const horaActual = new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
+  const fechaActual = capitalize(new Date().toLocaleDateString("es-CO", { weekday: "long", year: "numeric", month: "long", day: "numeric" }));
+  const jornadaHora = hora ? `${hora.toString().substring(0, 5)} ${parseInt(hora.toString().substring(0, 2)) < 12 ? "AM" : "PM"}` : "";
+
+  const iconoMarcaje = (nombre = "") => {
+    const n = nombre.toLowerCase();
+    if (n.includes("ingreso") || n.includes("entrada")) return <LogIn size={22} color="#16a34a" />;
+    if (n.includes("salida")) return <LogOut size={22} color="#dc2626" />;
+    if (n.includes("almuerzo") || n.includes("lunch")) return <Utensils size={22} color="#d97706" />;
+    if (n.includes("permiso")) return <ClipboardList size={22} color="#7c3aed" />;
+    return <CircleDot size={22} color="#2563eb" />;
+  };
+
   return (
-    <div style={{ overflow: '0' }}>
-      {!iniciarProceso ? (
-        <div className="container">
-          <div>
-            <h2 className="titulo">BIOMETRIA</h2>
-
-            <input type="text" className="inputperso" placeholder="Ingrese su cédula" value={cedula} onChange={(e) => setCedula(e.target.value)} />
-
-            <p className="subtitulo">Selecciona el tipo de registro</p>
-
-            {!loadingTipos ? (
-              <div className="lista">
-                {tipoSMarcaje.map((op, index) => (
-                  <div key={index} className="opcion" onClick={() => handleStart(op)}>
-                    <div className="icono">➡️</div>
-                    <div className="texto">
-                      <h3>&nbsp;&nbsp; {op.Nombre}</h3>
-                    </div>
-                  </div>
-                ))}
+    <div style={{ minHeight: "100vh", background: "#f0f4f8" }}>
+      {/* ── PANTALLA INICIO ─────────────────────────────────────────────── */}
+      {!iniciarProceso && (
+        <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+          {/* Header */}
+          <div style={{ background: "linear-gradient(135deg,#0f7cc0,#1a9fd4)", padding: "28px 24px 36px", color: "#fff" }}>
+            <div style={{ maxWidth: 480, margin: "0 auto" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
+                <ScanFace size={34} color="#fff" />
+                <div>
+                  <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: 1 }}>CONTROL BIOMÉTRICO</h1>
+                  <p style={{ margin: 0, fontSize: 12, opacity: 0.85 }}>
+                    {fechaActual} · {horaActual}
+                  </p>
+                </div>
               </div>
-            ) : (
-              <div className="cargando">
-                <div className="spinner" />
-              </div>
-            )}
+            </div>
           </div>
-        </div>
-      ) : (
-        <div>
-          {loadingInit ? (
-            <div className="container" style={{ backgroundColor: '#f9fafb', color: 'black' }}>
-              {rostroCoincide ? (
-                <div className="cargando">
+
+          {/* Contenido */}
+          <div style={{ flex: 1, maxWidth: 480, margin: "0 auto", width: "100%", padding: "0 16px 32px", marginTop: -16 }}>
+            {/* Card principal */}
+            <div style={{ background: "#fff", borderRadius: 20, padding: "24px 20px", boxShadow: "0 4px 24px rgba(0,0,0,0.1)", marginBottom: 16 }}>
+              <p style={{ margin: "0 0 12px", fontSize: 13, color: "#6b7280", fontWeight: 600 }}>NÚMERO DE CÉDULA</p>
+              <div style={{ position: "relative", marginBottom: 24 }}>
+                <User size={18} color="#9ca3af" style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)" }} />
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  placeholder="Ej: 1234567890"
+                  value={cedula}
+                  onChange={(e) => { setCedula(e.target.value); setErrorCedula(""); }}
+                  style={{
+                    width: "100%",
+                    padding: "14px 14px 14px 44px",
+                    borderRadius: 12,
+                    fontSize: 16,
+                    border: "2px solid #e5e7eb",
+                    outline: "none",
+                    boxSizing: "border-box",
+                    color: "#111827",
+                    background: "#f9fafb",
+                    fontWeight: 600,
+                    border: `2px solid ${errorCedula ? "#ef4444" : "#e5e7eb"}`,
+                    transition: "border-color 0.2s",
+                  }}
+                  onFocus={(e) => (e.target.style.borderColor = errorCedula ? "#ef4444" : "#0f7cc0")}
+                  onBlur={(e) => (e.target.style.borderColor = errorCedula ? "#ef4444" : "#e5e7eb")}
+                />
+                {errorCedula && (
+                  <p style={{ margin: "6px 0 0 4px", fontSize: 13, color: "#ef4444", fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
+                    <TriangleAlert size={14} /> {errorCedula}
+                  </p>
+                )}
+              </div>
+
+              <p style={{ margin: "0 0 12px", fontSize: 13, color: "#6b7280", fontWeight: 600 }}>TIPO DE REGISTRO</p>
+
+              {loadingTipos ? (
+                <div style={{ display: "flex", justifyContent: "center", padding: "24px 0" }}>
                   <div className="spinner" />
-                  <p className="mensaje">{mensaje2}</p>
                 </div>
               ) : (
-                <div className="cargando">
-                  <img src="./images/found.gif"></img>
-                  <h4 className="mensaje">{mensaje2}</h4>
-                  {contador > 0 && <p className="contador">⏳ Tiempo: {contador}s</p>}
+                <div style={{ display: "grid", gridTemplateColumns: tipoSMarcaje.length > 2 ? "1fr 1fr" : "1fr", gap: 10 }}>
+                  {tipoSMarcaje.map((op, i) => (
+                    <button
+                      key={i}
+                      onClick={() => handleStart(op)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        padding: "16px 18px",
+                        borderRadius: 14,
+                        border: "2px solid #e5e7eb",
+                        background: "#f9fafb",
+                        cursor: "pointer",
+                        textAlign: "left",
+                        transition: "all 0.2s",
+                        width: "100%",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = "#0f7cc0";
+                        e.currentTarget.style.background = "#eff6ff";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = "#e5e7eb";
+                        e.currentTarget.style.background = "#f9fafb";
+                      }}
+                    >
+                      {iconoMarcaje(op.Nombre)}
+                      <span style={{ fontWeight: 700, fontSize: 15, color: "#111827" }}>{op.Nombre}</span>
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
-          ) : (
-            <div className="proceso">
-              <p className="fecha">
-                {capitalize(
-                  new Date().toLocaleDateString('es-CO', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                  })
-                )}{' '}
-                {new Date().toLocaleTimeString('es-CO', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-              </p>
-              <p className="fecha">
-                Lugar Trabajo: <span className="fechahijo">{direccion}</span>{' '}
-              </p>
 
-              <div className="video-container">
-                <video ref={videoRef} autoPlay muted />
-                <canvas ref={canvasRef} />
-              </div>
-              <p className="fecha">
-                Inicio jornada: <span className="fechahijo">{horaFormateada} AM</span>
-              </p>
+            <p style={{ textAlign: "center", fontSize: 12, color: "#9ca3af" }}>Al continuar se activará la cámara para verificar tu identidad</p>
+          </div>
+        </div>
+      )}
 
-              <p className="fecha">
-                Tu Ubicacion Actual: <span className="fechahijo">{direccionActual}</span>
-              </p>
-              <div className="panel">
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    textAlign: 'center',
-                    padding: '20px',
-                    margin: '20px auto',
-                    borderRadius: '15px',
-                    background: 'linear-gradient(135deg, #e0f7fa, #80deea)',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                    maxWidth: '420px',
-                  }}
-                >
-                  <div
-                    style={{
-                      padding: '8px 12px',
-                      borderRadius: '10px',
-                      marginBottom: '15px',
-                      fontSize: '14px',
-                      fontWeight: 'bold',
-                      color: estaDentroArea ? '#155724' : '#721c24',
-                      background: estaDentroArea ? 'linear-gradient(135deg, #d4edda, #a5d6a7)' : 'linear-gradient(135deg, #f8d7da, #e57373)',
-                      boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                    }}
+      {/* ── LOADING ─────────────────────────────────────────────────────── */}
+      {iniciarProceso && loadingInit && (
+        <div
+          style={{
+            minHeight: "100vh",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "#f0f4f8",
+            padding: 24,
+          }}
+        >
+          {rostroCoincide ? (
+            <div style={{ textAlign: "center", maxWidth: 320 }}>
+              {mensaje2?.startsWith("ERROR:") ? (
+                <>
+                  <TriangleAlert size={52} color="#f59e0b" style={{ marginBottom: 16 }} />
+                  <p style={{ color: "#92400e", fontSize: 15, fontWeight: 700, margin: "0 0 20px", background: "#fef3c7", padding: "12px 16px", borderRadius: 12 }}>
+                    {mensaje2.replace("ERROR: ", "")}
+                  </p>
+                  <button
+                    onClick={() => { setIniciarProceso(false); setLoadingInit(true); setMensaje2(""); }}
+                    style={{ padding: "12px 28px", borderRadius: 12, border: "none", background: "#0f7cc0", color: "#fff", fontWeight: 700, fontSize: 15, cursor: "pointer" }}
                   >
-                    <span style={{ fontSize: '18px' }}>📍</span>
-                    {estaDentroArea ? 'Dentro de tu zona de trabajo' : 'Fuera de tu zona de trabajo'}
-                  </div>
-
-                  {/* Estado de detección y retos */}
-                  {reto && rostroPresente ? (
-                    <>
-                      <p style={{ fontWeight: 'bold', fontSize: '18px', color: '#004d40' }}>Realiza el siguiente gesto</p>
-
-                      <h2 style={{ color: '#00695c', margin: 0 }}>
-                        {reto === 'Mover la cabeza' ? 'Gira tu cabeza hacia la izquierda y la derecha 👈👉' : reto}
-                      </h2>
-
-                      {contador > 0 && (
-                        <p style={{ marginTop: '15px', fontSize: '16px', color: '#37474f' }}>
-                          ⏳ Tiempo: <strong>{contador}s</strong>
-                        </p>
-                      )}
-
-                      {mensaje && (
-                        <p
-                          style={{
-                            marginTop: '10px',
-                            color: '#2e7d32',
-                            fontWeight: 'bold',
-                            fontSize: '16px',
-                          }}
-                        >
-                          ✅ {mensaje}
-                        </p>
-                      )}
-                    </>
-                  ) : !rostroPresente ? (
-                    <h2 style={{ color: '#00695c', fontSize: '20px', margin: 0 }}>Ubícate frente y al centro de la cámara 🎯</h2>
-                  ) : null}
-                </div>
-
-                <div>
-                  <p>{tiporegistro}</p>
-                  {tiporegistro && (
-                    <button onClick={registrarPersona} disabled={!modelosCargados} className={`btn ${!modelosCargados ? 'disabled' : ''}`}>
-                      Registrarme
-                    </button>
-                  )}
-                </div>
+                    Volver a intentar
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div style={{ width: 72, height: 72, borderRadius: "50%", border: "6px solid #e5e7eb", borderTop: "6px solid #0f7cc0", animation: "spin 0.9s linear infinite", margin: "0 auto 24px" }} />
+                  <p style={{ color: "#374151", fontSize: 15, fontWeight: 600, margin: 0 }}>{mensaje2 || "Cargando..."}</p>
+                </>
+              )}
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", maxWidth: 340 }}>
+              <img src="./images/found.gif" style={{ width: 160, marginBottom: 20 }} alt="" />
+              <div style={{ background: "#fee2e2", borderRadius: 16, padding: "16px 20px" }}>
+                <p style={{ color: "#991b1b", fontWeight: 700, fontSize: 15, margin: "0 0 8px" }}>Rostro no reconocido</p>
+                <p style={{ color: "#7f1d1d", fontSize: 13, margin: 0 }}>{mensaje2}</p>
               </div>
+              {contador > 0 && (
+                <p style={{ marginTop: 16, color: "#6b7280", fontSize: 13 }}>
+                  Reintentando en <strong>{contador}s</strong>...
+                </p>
+              )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── CÁMARA ACTIVA ───────────────────────────────────────────────── */}
+      {iniciarProceso && !loadingInit && (
+        <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#f0f4f8" }}>
+          {/* Header con fecha/lugar/jornada */}
+          <div style={{ background: "linear-gradient(135deg,#0f7cc0,#1a9fd4)", padding: "14px 20px 18px", color: "#fff" }}>
+            <div style={{ maxWidth: 480, margin: "0 auto" }}>
+              {/* Fila superior: fecha y hora */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: 11, opacity: 0.8, textTransform: "uppercase", letterSpacing: 0.5 }}>{fechaActual}</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 24, fontWeight: 800 }}>{horaActual}</p>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <p style={{ margin: 0, fontSize: 11, opacity: 0.8 }}>LUGAR DE TRABAJO</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 13, fontWeight: 700, maxWidth: 180 }}>{direccion || "—"}</p>
+                </div>
+              </div>
+              {/* Fila inferior: inicio de jornada */}
+              {jornadaHora && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.15)", borderRadius: 10, padding: "7px 12px" }}>
+                  <Clock size={16} color="#fff" />
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>
+                    Inicio de jornada: <strong>{jornadaHora}</strong>
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Cuerpo */}
+          <div style={{ flex: 1, maxWidth: 480, margin: "0 auto", width: "100%", padding: "16px 16px 32px" }}>
+            {/* Contador — encima del video */}
+            {contador > 0 && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                  <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 600 }}>Tiempo restante</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: contador <= 3 ? "#ef4444" : "#0f7cc0" }}>{contador}s</span>
+                </div>
+                <div style={{ background: "#e5e7eb", borderRadius: 99, height: 8, overflow: "hidden" }}>
+                  <div
+                    style={{
+                      height: "100%",
+                      borderRadius: 99,
+                      transition: "width 0.8s ease",
+                      background: contador <= 3 ? "linear-gradient(90deg,#ef4444,#f97316)" : "linear-gradient(90deg,#0f7cc0,#00e5ff)",
+                      width: `${(contador / 10) * 100}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Video */}
+            <div
+              style={{
+                position: "relative",
+                borderRadius: 20,
+                overflow: "hidden",
+                background: "#000",
+                boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+                marginBottom: 16,
+                aspectRatio: "4/3",
+              }}
+            >
+              <video ref={videoRef} autoPlay muted style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+              <canvas ref={canvasRef} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", borderRadius: 20 }} />
+            </div>
+
+            {/* Zona de trabajo */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "11px 14px",
+                borderRadius: 14,
+                background: estaDentroArea ? "#d1fae5" : "#fee2e2",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+                marginBottom: 10,
+              }}
+            >
+              <MapPin size={20} color={estaDentroArea ? "#065f46" : "#991b1b"} />
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: estaDentroArea ? "#065f46" : "#991b1b" }}>
+                  {estaDentroArea ? "Dentro de tu zona de trabajo" : "Fuera de tu zona de trabajo"}
+                </p>
+                {direccionActual && (
+                  <p style={{ margin: "2px 0 0", fontSize: 11, color: estaDentroArea ? "#047857" : "#b91c1c", lineHeight: 1.3 }}>{direccionActual}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Reto */}
+            <div style={{ background: "#fff", borderRadius: 20, padding: "18px 16px", boxShadow: "0 4px 16px rgba(0,0,0,0.07)" }}>
+              {!rostroPresente ? (
+                <div style={{ textAlign: "center", padding: "10px 0" }}>
+                  <p style={{ margin: 0, fontSize: 15, color: "#6b7280", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                    <Crosshair size={18} color="#9ca3af" /> Ubícate frente a la cámara
+                  </p>
+                </div>
+              ) : reto ? (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+                  <p style={{ margin: 0, fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.8 }}>
+                    Realiza el siguiente gesto
+                  </p>
+                  <div
+                    style={{
+                      background: "linear-gradient(135deg,#0f7cc0,#1a9fd4)",
+                      borderRadius: 16,
+                      padding: "18px 24px",
+                      textAlign: "center",
+                      width: "100%",
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                      {reto === "Mover la cabeza" ? <ArrowLeftRight size={28} color="#fff" /> : <Smile size={28} color="#fff" />}
+                      <span style={{ fontSize: 20, fontWeight: 800, color: "#fff" }}>
+                        {reto === "Mover la cabeza" ? "Gira tu cabeza" : "Sonríe a la cámara"}
+                      </span>
+                    </div>
+                  </div>
+                  {mensaje && (
+                    <div style={{ background: "#d1fae5", borderRadius: 10, padding: "9px 14px", width: "100%", boxSizing: "border-box" }}>
+                      <p style={{ margin: 0, color: "#065f46", fontWeight: 700, fontSize: 13, textAlign: "center" }}>{mensaje}</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ textAlign: "center", padding: "10px 0" }}>
+                  <p style={{ margin: 0, fontSize: 14, color: "#0f7cc0", fontWeight: 600 }}>Rostro detectado, preparando reto...</p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

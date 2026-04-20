@@ -139,10 +139,11 @@
 }
 .video-container canvas {
   position: absolute;
-  top: -30px;
+  top: 0;
   left: 0;
   width: 100%;
   height: 100%;
+  border-radius: 20px;
 }
 
 .panel {
@@ -230,6 +231,6 @@
   }
 
   .video-container canvas {
-    top: -10px;
+    top: 0;
   }
 }

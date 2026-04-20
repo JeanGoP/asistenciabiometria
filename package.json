@@ -13,7 +13,7 @@
   },
   "license": "ISC",
   "author": "",
-      "type": "module",
+  "type": "module",
   "main": "index.js",
   "scripts": {
     "dev": "next dev --turbopack",
@@ -25,6 +25,7 @@
     "encoding": "^0.1.13",
     "face-api.js": "^0.22.2",
     "leaflet": "^1.9.4",
+    "lucide-react": "^1.8.0",
     "mssql": "^11.0.1",
     "next": "15.4.7",
     "react": "19.1.0",
