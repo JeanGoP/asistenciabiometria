@@ -240,14 +240,14 @@ export default function Home() {
   // Fase 1: detección rápida para el loop (sin descriptor = ~4x más rápido)
   const obtenerDeteccionRapida = async () => {
     if (!videoRef.current) return null;
-    const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.4 });
+    const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.35 });
     return (await faceapi.detectSingleFace(videoRef.current, options).withFaceLandmarks().withFaceExpressions()) || null;
   };
 
   // Fase 2: extracción del descriptor (solo se llama UNA vez al completar el reto)
   const obtenerDescriptorFinal = async () => {
     if (!videoRef.current) return null;
-    const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.4 });
+    const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.35 });
     return (await faceapi.detectSingleFace(videoRef.current, options).withFaceLandmarks().withFaceDescriptor()) || null;
   };
 
@@ -601,8 +601,9 @@ export default function Home() {
             const noseX = nose[3].x;
             const centerX = deteccion.detection.box.x + deteccion.detection.box.width / 2;
             const desplazamiento = noseX - centerX;
+            const umbralGiro = deteccion.detection.box.width * 0.18;
 
-            if (Math.abs(desplazamiento) > 30 && !giroDetectado) {
+            if (Math.abs(desplazamiento) > umbralGiro && !giroDetectado) {
               dibujarRecuadroRostro(ctx, box, "cumplido");
               setGiroDetectado(true);
               setValidando(false);
