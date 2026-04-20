@@ -881,6 +881,36 @@ export default function Home() {
             >
               <video ref={videoRef} autoPlay muted style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
               <canvas ref={canvasRef} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", borderRadius: 20 }} />
+              {!modelosCargados && (
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "rgba(0,0,0,0.5)",
+                    borderRadius: 20,
+                    gap: 14,
+                    zIndex: 5,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      border: "4px solid rgba(255,255,255,0.25)",
+                      borderTop: "4px solid #fff",
+                      borderRadius: "50%",
+                      animation: "spin 0.9s linear infinite",
+                    }}
+                  />
+                  <p style={{ color: "#fff", fontSize: 14, fontWeight: 600, margin: 0, textAlign: "center", padding: "0 20px" }}>
+                    Preparando reconocimiento facial...
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Zona de trabajo */}
