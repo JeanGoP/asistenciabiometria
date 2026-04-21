@@ -191,10 +191,12 @@ export default function Home() {
       }
 
       // Usuario existe, registrado y sin marcaje hoy → abrir cámara
-      setMensaje2("Activando cámara...");
-      startCamera();
       setLoadingInit(false);
       setMensaje2("");
+      startCamera().catch(() => {
+        setMensaje2("ERROR: No se pudo acceder a la cámara. Verifica que hayas dado permiso de cámara e intenta de nuevo.");
+        setLoadingInit(true);
+      });
     } catch (error) {
       console.error(error);
       setErrorCedula("Error de conexión. Verifica tu red e intenta de nuevo.");
@@ -465,56 +467,47 @@ export default function Home() {
     setRostroCoincide(true);
   };
 
+  const fetchConTimeout = (url, opciones, ms = 15000) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms);
+    return fetch(url, { ...opciones, signal: ctrl.signal }).finally(() => clearTimeout(timer));
+  };
+
   const validarPersona = async (descriptor) => {
     try {
       if (!descriptor || descriptor.length === 0) {
-        setMensaje2("❌ No se detectó el rostro. Intenta de nuevo.");
+        setMensaje2("ERROR: No se detectó el rostro. Intenta de nuevo.");
         return;
       }
       const id_usuario = cedula;
       const tipoMarcaje = tpMarca;
 
-      if (!id_usuario) {
-        setMensaje2("❌ No se encontró el usuario.");
+      if (!id_usuario || !tipoMarcaje) {
+        setMensaje2("ERROR: Datos incompletos. Vuelve a intentarlo.");
         return;
       }
-      if (!tipoMarcaje) {
-        setMensaje2("❌ No se encontró el tipo de marcaje.");
-        return;
-      }
-      console.log(
-        JSON.stringify({
-          id_usuario,
-          descriptor: Array.from(descriptor),
-          latitude: ubicacion.lat,
-          longitude: ubicacion.lon,
-          enSede: dentroArea(ubicacion.lat, ubicacion.lon),
-          rangodif: rango,
-          ubicacionMarcada: direccionActual,
-          tipoMarcaje,
-        }),
-      );
-      console.log("Estoy en el metodo");
 
-      const res = await fetch("/api/validar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id_usuario,
-          descriptor: Array.from(descriptor),
-          latitude: ubicacion.lat,
-          longitude: ubicacion.lon,
-          enSede: dentroArea(ubicacion.lat, ubicacion.lon),
-          rangodif: rango,
-          ubicacionMarcada: direccionActual,
-          tipoMarcaje,
-        }),
-      });
+      const res = await fetchConTimeout(
+        "/api/validar",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id_usuario,
+            descriptor: Array.from(descriptor),
+            latitude: ubicacion.lat,
+            longitude: ubicacion.lon,
+            enSede: dentroArea(ubicacion.lat, ubicacion.lon),
+            rangodif: rango,
+            ubicacionMarcada: direccionActual,
+            tipoMarcaje,
+          }),
+        },
+      );
       const data = await res.json();
 
       if (data.ok) {
         if (data.coincide == 1) {
-          // if (audioRef.current) audioRef.current.play();
           stopCamera();
           setMensaje2(data.mensaje);
           router.push("/about");
@@ -529,14 +522,16 @@ export default function Home() {
             setLoadingInit(false);
           }, 5000);
           setMensaje2(data.mensaje);
-          // setLoadingInit(false);
         }
       } else {
         router.push("/error");
       }
     } catch (err) {
       console.error(err);
-      console.log("❌ Error en validarPersona");
+      const msg = err.name === "AbortError"
+        ? "ERROR: El servidor tardó demasiado. Verifica tu conexión e intenta de nuevo."
+        : "ERROR: Error al validar identidad. Intenta de nuevo.";
+      setMensaje2(msg);
     }
   };
 
@@ -592,8 +587,11 @@ export default function Home() {
             const finalSonrisa = await obtenerDescriptorFinal();
             stopCamera();
             setLoadingInit(true);
-            setMensaje("✅✅ Reto cumplido: Sonrisa detectada");
-            if (finalSonrisa) validarPersona(finalSonrisa.descriptor);
+            if (finalSonrisa) {
+              validarPersona(finalSonrisa.descriptor);
+            } else {
+              setMensaje2("ERROR: No se pudo capturar el rostro. Intenta de nuevo.");
+            }
           }
 
           if (reto === "Mover la cabeza") {
@@ -612,8 +610,11 @@ export default function Home() {
               const finalGiro = await obtenerDescriptorFinal();
               stopCamera();
               setLoadingInit(true);
-              setMensaje("✅✅ Reto cumplido: Movimiento detectado");
-              if (finalGiro) validarPersona(finalGiro.descriptor);
+              if (finalGiro) {
+                validarPersona(finalGiro.descriptor);
+              } else {
+                setMensaje2("ERROR: No se pudo capturar el rostro. Intenta de nuevo.");
+              }
             }
           }
         }
