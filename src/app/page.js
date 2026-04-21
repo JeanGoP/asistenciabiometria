@@ -4,7 +4,22 @@ import { useRouter } from "next/navigation";
 import "./indexPrincipal.css";
 import * as faceapi from "face-api.js";
 import { useAppContext } from "@/context/AppContext";
-import { ScanFace, User, MapPin, Clock, TriangleAlert, Smile, ArrowLeftRight, Crosshair, LogIn, LogOut, Utensils, ClipboardList, CircleDot, CheckCircle2 } from "lucide-react";
+import {
+  ScanFace,
+  User,
+  MapPin,
+  Clock,
+  TriangleAlert,
+  Smile,
+  ArrowLeftRight,
+  Crosshair,
+  LogIn,
+  LogOut,
+  Utensils,
+  ClipboardList,
+  CircleDot,
+  CheckCircle2,
+} from "lucide-react";
 
 export default function Home() {
   const videoRef = useRef(null);
@@ -30,6 +45,12 @@ export default function Home() {
   const [giroDetectado, setGiroDetectado] = useState(false);
   const canvasRef = useRef(null);
   const isDetectingRef = useRef(false);
+  const intentosFallidosRef = useRef(0);
+  const fotoBlobRef = useRef(null);
+  const rangoRef = useRef(null);
+  const ubicacionRef = useRef({ lat: null, lon: null });
+  const geoPermitidaRef = useRef({ lat: 0, lon: 0, radio: 50 });
+  const direccionActualRef = useRef(null);
   const [cedula, setCedula] = useState("");
   const [errorCedula, setErrorCedula] = useState("");
   const [iniciarProceso, setIniciarProceso] = useState(false);
@@ -70,6 +91,7 @@ export default function Home() {
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const { latitude, longitude } = position.coords;
+        ubicacionRef.current = { lat: latitude, lon: longitude };
         setUbicacion({ lat: latitude, lon: longitude });
         console.log("📍 Mi ubicación actual:", latitude, longitude);
       },
@@ -114,6 +136,7 @@ export default function Home() {
     if (!ubicacion.lat || !ubicacion.lon) return;
 
     const distancia = calcularDistancia(ubicacion.lat, ubicacion.lon);
+    rangoRef.current = distancia;
     setRango(distancia);
   }, [ubicacion, geoPermitida]);
 
@@ -146,6 +169,8 @@ export default function Home() {
     try {
       const id_usuario = cedula;
       const tipoMarcaje = tipoMarcaje2;
+      intentosFallidosRef.current = 0;
+      fotoBlobRef.current = null;
       setIniciarProceso(true);
       setLoadingInit(true);
       setMensaje2("Verificando tu información...");
@@ -155,10 +180,8 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id_usuario, tipoMarcaje }),
       });
-      console.log(res);
-
       const data = await res.json();
-      console.log(data);
+
       if (!data.ok || !data.result || Object.keys(data.result).length === 0) {
         setErrorCedula("Cédula no encontrada. Verifica el número ingresado.");
         setIniciarProceso(false);
@@ -166,11 +189,9 @@ export default function Home() {
         return;
       }
 
-      setGeoPermitida({
-        lat: parseFloat(data.result.lat),
-        lon: parseFloat(data.result.lon),
-        radio: 300,
-      });
+      const geo = { lat: parseFloat(data.result.lat), lon: parseFloat(data.result.lon), radio: 300 };
+      geoPermitidaRef.current = geo;
+      setGeoPermitida(geo);
       setDireccion(data.result.direccion);
       setHora(data.result.horario);
 
@@ -222,9 +243,11 @@ export default function Home() {
       if (ubicacion.lat && ubicacion.lon) {
         try {
           const direubi = await coordenadasATexto(ubicacion.lat, ubicacion.lon);
+          direccionActualRef.current = direubi;
           setDireccionActual(direubi);
         } catch (error) {
           console.error(error);
+          direccionActualRef.current = "No se pudo obtener la dirección";
           setDireccionActual("No se pudo obtener la dirección");
         }
       }
@@ -239,14 +262,12 @@ export default function Home() {
     setTiporegistro(isregistro === "true");
   }, [isregistro]);
 
-  // Fase 1: detección rápida para el loop (sin descriptor = ~4x más rápido)
   const obtenerDeteccionRapida = async () => {
     if (!videoRef.current) return null;
     const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.35 });
     return (await faceapi.detectSingleFace(videoRef.current, options).withFaceLandmarks().withFaceExpressions()) || null;
   };
 
-  // Fase 2: extracción del descriptor (solo se llama UNA vez al completar el reto)
   const obtenerDescriptorFinal = async () => {
     if (!videoRef.current) return null;
     const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.35 });
@@ -259,11 +280,9 @@ export default function Home() {
     const rx = canvasWidth * 0.22;
     const ry = canvasHeight * 0.32;
 
-    // Fondo semitransparente fuera del óvalo
     ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-    // Recorte del óvalo (zona clara)
     ctx.save();
     ctx.beginPath();
     ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
@@ -271,7 +290,6 @@ export default function Home() {
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     ctx.restore();
 
-    // Borde del óvalo punteado animado
     ctx.save();
     ctx.setLineDash([12, 8]);
     ctx.lineDashOffset = -(Date.now() / 60) % 20;
@@ -284,7 +302,6 @@ export default function Home() {
     ctx.stroke();
     ctx.restore();
 
-    // Texto de instrucción
     ctx.save();
     ctx.fillStyle = "rgba(255,255,255,0.95)";
     ctx.font = `bold ${Math.round(canvasWidth * 0.038)}px sans-serif`;
@@ -320,7 +337,6 @@ export default function Home() {
     ctx.shadowColor = "rgba(0,0,0,0.8)";
     ctx.shadowBlur = 8;
 
-    // Fondo pastilla
     const label = `${flecha}  ${texto}  ${flecha}`;
     const metrics = ctx.measureText(label);
     const pw = metrics.width + 24;
@@ -467,6 +483,52 @@ export default function Home() {
     setRostroCoincide(true);
   };
 
+  const capturarFotoDesdeVideo = () =>
+    new Promise((resolve) => {
+      const video = videoRef.current;
+      if (!video || video.videoWidth === 0) {
+        resolve(null);
+        return;
+      }
+      const c = document.createElement("canvas");
+      c.width = video.videoWidth;
+      c.height = video.videoHeight;
+      c.getContext("2d").drawImage(video, 0, 0);
+      c.toBlob((blob) => resolve(blob), "image/png");
+    });
+
+  const subirFotoS3 = async (blob) => {
+    const form = new FormData();
+    form.append("archivo", blob, `bio_${cedula}_${Date.now()}.png`);
+    form.append("Folder", "SINTESISGESTION_ARCHIVADOR/IMGBIOMETRICO");
+    const res = await fetch("/api/uploadFoto", { method: "POST", body: form });
+    const data = await res.json();
+    console.log(data);
+
+    return data.url || data.Url || data.URL || "";
+  };
+
+  const guardarIntentoFallido = async (fotoUrl) => {
+    try {
+      await fetch("/api/guardarIntento", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id_usuario: cedula,
+          fotoUrl,
+          latitude: ubicacionRef.current.lat,
+          longitude: ubicacionRef.current.lon,
+          tipoMarcaje: tpMarca,
+          enSede: dentroArea(ubicacionRef.current.lat, ubicacionRef.current.lon),
+          rangodif: rangoRef.current,
+          ubicacionMarcada: direccionActualRef.current,
+        }),
+      });
+    } catch (e) {
+      console.error("Error guardando intento fallido:", e);
+    }
+  };
+
   const fetchConTimeout = (url, opciones, ms = 15000) => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), ms);
@@ -487,23 +549,20 @@ export default function Home() {
         return;
       }
 
-      const res = await fetchConTimeout(
-        "/api/validar",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id_usuario,
-            descriptor: Array.from(descriptor),
-            latitude: ubicacion.lat,
-            longitude: ubicacion.lon,
-            enSede: dentroArea(ubicacion.lat, ubicacion.lon),
-            rangodif: rango,
-            ubicacionMarcada: direccionActual,
-            tipoMarcaje,
-          }),
-        },
-      );
+      const res = await fetchConTimeout("/api/validar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id_usuario,
+          descriptor: Array.from(descriptor),
+          latitude: ubicacionRef.current.lat,
+          longitude: ubicacionRef.current.lon,
+          enSede: dentroArea(ubicacionRef.current.lat, ubicacionRef.current.lon),
+          rangodif: rangoRef.current,
+          ubicacionMarcada: direccionActualRef.current,
+          tipoMarcaje,
+        }),
+      });
       const data = await res.json();
 
       if (data.ok) {
@@ -513,24 +572,48 @@ export default function Home() {
           router.push("/about");
         }
         if (data.coincide == 0) {
+          intentosFallidosRef.current += 1;
           stopCamera();
           setLoadingInit(true);
-          setRostroCoincide(false);
-          iniciarContador();
-          setTimeout(() => {
-            reiniciarSistema();
-            setLoadingInit(false);
-          }, 5000);
-          setMensaje2(data.mensaje);
+
+          if (intentosFallidosRef.current >= 2) {
+            intentosFallidosRef.current = 0;
+            setRostroCoincide(true);
+            setMensaje2("Guardando tu registro...");
+            const blob = fotoBlobRef.current;
+            try {
+              const fotoUrl = blob ? await subirFotoS3(blob) : "";
+              await guardarIntentoFallido(fotoUrl);
+              setMensaje2("Registro exitoso. No pudimos reconocerte pero tu registro quedó guardado.");
+              setTimeout(() => router.push("/about"), 3500);
+            } catch (e) {
+              console.error("Error procesando foto de intento fallido:", e);
+              setRostroCoincide(false);
+              setMensaje2(data.mensaje);
+              setTimeout(() => {
+                reiniciarSistema();
+                setLoadingInit(false);
+              }, 5000);
+            }
+          } else {
+            setRostroCoincide(false);
+            iniciarContador();
+            setTimeout(() => {
+              reiniciarSistema();
+              setLoadingInit(false);
+            }, 5000);
+            setMensaje2(data.mensaje);
+          }
         }
       } else {
         router.push("/error");
       }
     } catch (err) {
       console.error(err);
-      const msg = err.name === "AbortError"
-        ? "ERROR: El servidor tardó demasiado. Verifica tu conexión e intenta de nuevo."
-        : "ERROR: Error al validar identidad. Intenta de nuevo.";
+      const msg =
+        err.name === "AbortError"
+          ? "ERROR: El servidor tardó demasiado. Verifica tu conexión e intenta de nuevo."
+          : "ERROR: Error al validar identidad. Intenta de nuevo.";
       setMensaje2(msg);
     }
   };
@@ -585,6 +668,7 @@ export default function Home() {
             if (timerId) clearInterval(timerId);
 
             const finalSonrisa = await obtenerDescriptorFinal();
+            fotoBlobRef.current = await capturarFotoDesdeVideo();
             stopCamera();
             setLoadingInit(true);
             if (finalSonrisa) {
@@ -608,6 +692,7 @@ export default function Home() {
               if (timerId) clearInterval(timerId);
 
               const finalGiro = await obtenerDescriptorFinal();
+              fotoBlobRef.current = await capturarFotoDesdeVideo();
               stopCamera();
               setLoadingInit(true);
               if (finalGiro) {
@@ -668,7 +753,9 @@ export default function Home() {
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: 1 }}>CONTROL BIOMÉTRICO</h1>
-                    <span style={{ fontSize: 10, fontWeight: 700, background: "rgba(255,255,255,0.2)", borderRadius: 6, padding: "2px 7px", letterSpacing: 0.5 }}>
+                    <span
+                      style={{ fontSize: 10, fontWeight: 700, background: "rgba(255,255,255,0.2)", borderRadius: 6, padding: "2px 7px", letterSpacing: 0.5 }}
+                    >
                       v{process.env.NEXT_PUBLIC_VERSION}
                     </span>
                   </div>
@@ -692,7 +779,10 @@ export default function Home() {
                   inputMode="numeric"
                   placeholder="Ej: 1234567890"
                   value={cedula}
-                  onChange={(e) => { setCedula(e.target.value); setErrorCedula(""); }}
+                  onChange={(e) => {
+                    setCedula(e.target.value);
+                    setErrorCedula("");
+                  }}
                   style={{
                     width: "100%",
                     padding: "14px 14px 14px 44px",
@@ -782,19 +872,52 @@ export default function Home() {
               {mensaje2?.startsWith("ERROR:") ? (
                 <>
                   <TriangleAlert size={52} color="#f59e0b" style={{ marginBottom: 16 }} />
-                  <p style={{ color: "#92400e", fontSize: 15, fontWeight: 700, margin: "0 0 20px", background: "#fef3c7", padding: "12px 16px", borderRadius: 12 }}>
+                  <p
+                    style={{
+                      color: "#92400e",
+                      fontSize: 15,
+                      fontWeight: 700,
+                      margin: "0 0 20px",
+                      background: "#fef3c7",
+                      padding: "12px 16px",
+                      borderRadius: 12,
+                    }}
+                  >
                     {mensaje2.replace("ERROR: ", "")}
                   </p>
                   <button
-                    onClick={() => { setIniciarProceso(false); setLoadingInit(true); setMensaje2(""); }}
-                    style={{ padding: "12px 28px", borderRadius: 12, border: "none", background: "#0f7cc0", color: "#fff", fontWeight: 700, fontSize: 15, cursor: "pointer" }}
+                    onClick={() => {
+                      setIniciarProceso(false);
+                      setLoadingInit(true);
+                      setMensaje2("");
+                    }}
+                    style={{
+                      padding: "12px 28px",
+                      borderRadius: 12,
+                      border: "none",
+                      background: "#0f7cc0",
+                      color: "#fff",
+                      fontWeight: 700,
+                      fontSize: 15,
+                      cursor: "pointer",
+                    }}
                   >
                     Volver a intentar
                   </button>
                 </>
               ) : (
                 <>
-                  <div style={{ width: 72, height: 72, borderRadius: "50%", border: "6px solid #e5e7eb", borderTop: "6px solid #0f7cc0", animation: "spin 0.9s linear infinite", margin: "0 auto 24px" }} />
+                  <div
+                    style={{
+                      width: 72,
+                      height: 72,
+                      borderRadius: "50%",
+                      border: "6px solid #e5e7eb",
+                      borderTop: "6px solid #0f7cc0",
+                      animation: "spin 0.9s linear infinite",
+                      margin: "0 auto 24px",
+                    }}
+                  />
                   <p style={{ color: "#374151", fontSize: 15, fontWeight: 600, margin: 0 }}>{mensaje2 || "Cargando..."}</p>
                 </>
               )}
