@@ -43,8 +43,14 @@ export default function Home() {
   const [parpadeos, setParpadeos] = useState(0);
   const [tiporegistro, setTiporegistro] = useState(false);
   const [giroDetectado, setGiroDetectado] = useState(false);
+  const [procesando, setProcesando] = useState(false);
+  const [movimientoConfirmado, setMovimientoConfirmado] = useState(false);
   const canvasRef = useRef(null);
   const isDetectingRef = useRef(false);
+  const procesandoRef = useRef(false);
+  const movimientoConfirmadoRef = useRef(false);
+  const generandoRetoRef = useRef(false);
+  const histNarizRef = useRef([]);
   const intentosFallidosRef = useRef(0);
   const fotoBlobRef = useRef(null);
   const rangoRef = useRef(null);
@@ -447,6 +453,10 @@ export default function Home() {
           setReto("");
           setParpadeos(0);
           setGiroDetectado(false);
+          movimientoConfirmadoRef.current = false;
+          generandoRetoRef.current = false;
+          histNarizRef.current = [];
+          setMovimientoConfirmado(false);
           return 0;
         }
         return prev - 1;
@@ -456,6 +466,8 @@ export default function Home() {
   };
 
   const generarReto = () => {
+    if (procesandoRef.current || generandoRetoRef.current) return;
+    generandoRetoRef.current = true;
     const retos = ["Sonreír", "Mover la cabeza"];
     let nuevoReto = retos[Math.floor(Math.random() * retos.length)];
     while (nuevoReto === ultimoReto) {
@@ -471,6 +483,12 @@ export default function Home() {
   };
 
   const reiniciarSistema = () => {
+    procesandoRef.current = false;
+    generandoRetoRef.current = false;
+    setProcesando(false);
+    movimientoConfirmadoRef.current = false;
+    histNarizRef.current = [];
+    setMovimientoConfirmado(false);
     setReto("");
     setUltimoReto("");
     setMensaje("");
@@ -659,22 +677,53 @@ export default function Home() {
         dibujarRecuadroRostro(ctx, box, estadoRecuadro);
         dibujarFeedbackDistancia(ctx, box, canvas.width, canvas.height);
 
-        if (!validando && distanciaOk) generarReto();
+        // Anti-spoofing: detectar movimiento real de cabeza
+        if (!procesandoRef.current && !movimientoConfirmadoRef.current && !validando) {
+          const nariz = deteccion.landmarks.getNose();
+          const punta = nariz[3];
+          histNarizRef.current.push({ x: punta.x, y: punta.y });
+          if (histNarizRef.current.length > 25) histNarizRef.current.shift();
 
-        if (validando) {
+          if (histNarizRef.current.length >= 15) {
+            const xs = histNarizRef.current.map((p) => p.x);
+            const ys = histNarizRef.current.map((p) => p.y);
+            const rangoX = Math.max(...xs) - Math.min(...xs);
+            const rangoY = Math.max(...ys) - Math.min(...ys);
+            const UMBRAL = box.width * 0.07;
+            if (rangoX > UMBRAL || rangoY > UMBRAL) {
+              movimientoConfirmadoRef.current = true;
+              setMovimientoConfirmado(true);
+              generarReto();
+            }
+          }
+        }
+
+        if (validando && !procesandoRef.current) {
           if (reto === "Sonreír" && deteccion.expressions.happy > 0.7) {
+            procesandoRef.current = true;
+            setProcesando(true);
             dibujarRecuadroRostro(ctx, box, "cumplido");
             setValidando(false);
             if (timerId) clearInterval(timerId);
-
-            const finalSonrisa = await obtenerDescriptorFinal();
-            fotoBlobRef.current = await capturarFotoDesdeVideo();
-            stopCamera();
-            setLoadingInit(true);
-            if (finalSonrisa) {
-              validarPersona(finalSonrisa.descriptor);
-            } else {
-              setMensaje2("ERROR: No se pudo capturar el rostro. Intenta de nuevo.");
+            try {
+              const finalSonrisa = await obtenerDescriptorFinal();
+              fotoBlobRef.current = await capturarFotoDesdeVideo();
+              await stopCamera();
+              setMensaje2("Verificando identidad...");
+              setLoadingInit(true);
+              if (finalSonrisa) {
+                validarPersona(finalSonrisa.descriptor);
+              } else {
+                procesandoRef.current = false;
+                setProcesando(false);
+                setMensaje2("ERROR: No se pudo capturar el rostro. Intenta de nuevo.");
+              }
+            } catch {
+              procesandoRef.current = false;
+              setProcesando(false);
+              await stopCamera();
+              setMensaje2("ERROR: Error al procesar el gesto. Intenta de nuevo.");
+              setLoadingInit(true);
             }
           }
 
@@ -686,19 +735,31 @@ export default function Home() {
             const umbralGiro = deteccion.detection.box.width * 0.18;
 
             if (Math.abs(desplazamiento) > umbralGiro && !giroDetectado) {
+              procesandoRef.current = true;
+              setProcesando(true);
               dibujarRecuadroRostro(ctx, box, "cumplido");
               setGiroDetectado(true);
               setValidando(false);
               if (timerId) clearInterval(timerId);
-
-              const finalGiro = await obtenerDescriptorFinal();
-              fotoBlobRef.current = await capturarFotoDesdeVideo();
-              stopCamera();
-              setLoadingInit(true);
-              if (finalGiro) {
-                validarPersona(finalGiro.descriptor);
-              } else {
-                setMensaje2("ERROR: No se pudo capturar el rostro. Intenta de nuevo.");
+              try {
+                const finalGiro = await obtenerDescriptorFinal();
+                fotoBlobRef.current = await capturarFotoDesdeVideo();
+                await stopCamera();
+                setMensaje2("Verificando identidad...");
+                setLoadingInit(true);
+                if (finalGiro) {
+                  validarPersona(finalGiro.descriptor);
+                } else {
+                  procesandoRef.current = false;
+                  setProcesando(false);
+                  setMensaje2("ERROR: No se pudo capturar el rostro. Intenta de nuevo.");
+                }
+              } catch {
+                procesandoRef.current = false;
+                setProcesando(false);
+                await stopCamera();
+                setMensaje2("ERROR: Error al procesar el gesto. Intenta de nuevo.");
+                setLoadingInit(true);
               }
             }
           }
@@ -1035,6 +1096,37 @@ export default function Home() {
                   </p>
                 </div>
               )}
+              {procesando && (
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "rgba(0,0,0,0.72)",
+                    borderRadius: 20,
+                    gap: 16,
+                    zIndex: 10,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 56,
+                      height: 56,
+                      border: "5px solid rgba(255,255,255,0.2)",
+                      borderTop: "5px solid #00e5ff",
+                      borderRadius: "50%",
+                      animation: "spin 0.8s linear infinite",
+                    }}
+                  />
+                  <div style={{ textAlign: "center", padding: "0 24px" }}>
+                    <p style={{ color: "#fff", fontSize: 16, fontWeight: 700, margin: "0 0 4px" }}>Gesto detectado ✓</p>
+                    <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, margin: 0 }}>Verificando identidad...</p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Zona de trabajo */}
@@ -1069,6 +1161,14 @@ export default function Home() {
                     <Crosshair size={18} color="#9ca3af" /> Ubícate frente a la cámara
                   </p>
                 </div>
+              ) : !movimientoConfirmado && !reto ? (
+                <div style={{ textAlign: "center", padding: "8px 0" }}>
+                  <div style={{ fontSize: 36, animation: "headTurnLeft 1.2s ease-in-out infinite alternate", display: "inline-block", marginBottom: 8 }}>
+                    🙂
+                  </div>
+                  <p style={{ margin: "0 0 6px", fontSize: 15, fontWeight: 700, color: "#374151" }}>Mueve ligeramente la cabeza</p>
+                  <p style={{ margin: 0, fontSize: 12, color: "#9ca3af" }}>Confirma que eres una persona real</p>
+                </div>
               ) : reto ? (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
                   <p style={{ margin: 0, fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.8 }}>
@@ -1087,10 +1187,109 @@ export default function Home() {
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
                       {reto === "Mover la cabeza" ? <ArrowLeftRight size={28} color="#fff" /> : <Smile size={28} color="#fff" />}
                       <span style={{ fontSize: 20, fontWeight: 800, color: "#fff" }}>
-                        {reto === "Mover la cabeza" ? "Gira tu cabeza" : "Sonríe a la cámara"}
+                        {reto === "Mover la cabeza" ? "Mover lentamente la cabeza de un lado a otro" : "Sonríe a la cámara"}
                       </span>
                     </div>
                   </div>
+                  {/* Ejemplo visual del reto */}
+                  <div style={{ width: "100%", boxSizing: "border-box" }}>
+                    {reto === "Mover la cabeza" ? (
+                      <div style={{ background: "#eff6ff", borderRadius: 12, padding: "12px 14px", border: "1px solid #bfdbfe" }}>
+                        <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "#1d4ed8", textTransform: "uppercase", letterSpacing: 0.6 }}>
+                          ¿Cómo hacerlo?
+                        </p>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                            <div
+                              style={{
+                                fontSize: 28,
+                                animation: "headTurnLeft 1.5s ease-in-out infinite alternate",
+                                display: "inline-block",
+                              }}
+                            >
+                              😐
+                            </div>
+                            <span style={{ fontSize: 9, color: "#6b7280", fontWeight: 600 }}>IZQUIERDA</span>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, opacity: 0.4 }}>
+                            <ArrowLeftRight size={20} color="#3b82f6" />
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                            <div
+                              style={{
+                                fontSize: 28,
+                                animation: "headTurnRight 1.5s ease-in-out infinite alternate",
+                                display: "inline-block",
+                              }}
+                            >
+                              😐
+                            </div>
+                            <span style={{ fontSize: 9, color: "#6b7280", fontWeight: 600 }}>DERECHA</span>
+                          </div>
+                        </div>
+                        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#dbeafe", borderRadius: 8, padding: "5px 8px" }}>
+                            <span style={{ fontSize: 14 }}>1️⃣</span>
+                            <span style={{ fontSize: 11, color: "#1e40af" }}>
+                              Mira hacia tu <strong>izquierda</strong> lentamente
+                            </span>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#dbeafe", borderRadius: 8, padding: "5px 8px" }}>
+                            <span style={{ fontSize: 14 }}>2️⃣</span>
+                            <span style={{ fontSize: 11, color: "#1e40af" }}>
+                              Luego mira hacia tu <strong>derecha</strong> lentamente
+                            </span>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#dbeafe", borderRadius: 8, padding: "5px 8px" }}>
+                            <span style={{ fontSize: 14 }}>💡</span>
+                            <span style={{ fontSize: 11, color: "#1e40af" }}>Mantén tu rostro visible frente a la cámara</span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ background: "#f0fdf4", borderRadius: 12, padding: "12px 14px", border: "1px solid #bbf7d0" }}>
+                        <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "#15803d", textTransform: "uppercase", letterSpacing: 0.6 }}>
+                          ¿Cómo hacerlo?
+                        </p>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                            <span style={{ fontSize: 28 }}>😐</span>
+                            <span style={{ fontSize: 9, color: "#6b7280", fontWeight: 600 }}>NEUTRO</span>
+                          </div>
+                          <span style={{ fontSize: 18, color: "#16a34a" }}>→</span>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                            <span
+                              style={{
+                                fontSize: 28,
+                                animation: "smilePulse 1.2s ease-in-out infinite alternate",
+                                display: "inline-block",
+                              }}
+                            >
+                              😁
+                            </span>
+                            <span style={{ fontSize: 9, color: "#6b7280", fontWeight: 600 }}>SONRÍE</span>
+                          </div>
+                        </div>
+                        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#dcfce7", borderRadius: 8, padding: "5px 8px" }}>
+                            <span style={{ fontSize: 14 }}>1️⃣</span>
+                            <span style={{ fontSize: 11, color: "#166534" }}>Mira directo a la cámara</span>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#dcfce7", borderRadius: 8, padding: "5px 8px" }}>
+                            <span style={{ fontSize: 14 }}>2️⃣</span>
+                            <span style={{ fontSize: 11, color: "#166534" }}>
+                              Haz una <strong>sonrisa amplia</strong> y natural
+                            </span>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#dcfce7", borderRadius: 8, padding: "5px 8px" }}>
+                            <span style={{ fontSize: 14 }}>💡</span>
+                            <span style={{ fontSize: 11, color: "#166534" }}>Mantén la sonrisa por 1-2 segundos</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {mensaje && (
                     <div style={{ background: "#d1fae5", borderRadius: 10, padding: "9px 14px", width: "100%", boxSizing: "border-box" }}>
                       <p style={{ margin: 0, color: "#065f46", fontWeight: 700, fontSize: 13, textAlign: "center" }}>{mensaje}</p>
