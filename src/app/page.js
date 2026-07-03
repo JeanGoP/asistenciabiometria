@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import "./indexPrincipal.css";
 import * as faceapi from "face-api.js";
+import { cargarModelos, cargarExpresiones } from "@/lib/faceModels";
+import { marcar, resumenMarcaje, limpiarMarcas } from "@/lib/perf";
 import { useAppContext } from "@/context/AppContext";
 import {
   ScanFace,
@@ -37,7 +39,9 @@ export default function Home() {
   const [mensaje2, setMensaje2] = useState("");
   const [validando, setValidando] = useState(false);
   const [contador, setContador] = useState(0);
-  const [timerId, setTimerId] = useState(null);
+  // Ref (no estado): el id del contador se lee dentro de closures del loop de
+  // detección; como estado quedaba obsoleto y el clearInterval fallaba.
+  const timerRef = useRef(null);
   const [rostroPresente, setRostroPresente] = useState(false);
   const [ojosCerrados, setOjosCerrados] = useState(false);
   const [parpadeos, setParpadeos] = useState(0);
@@ -47,6 +51,8 @@ export default function Home() {
   const [movimientoConfirmado, setMovimientoConfirmado] = useState(false);
   const canvasRef = useRef(null);
   const isDetectingRef = useRef(false);
+  const primeraInferenciaRef = useRef(false);
+  const rostroMarcadoRef = useRef(false);
   const procesandoRef = useRef(false);
   const movimientoConfirmadoRef = useRef(false);
   const generandoRetoRef = useRef(false);
@@ -77,6 +83,16 @@ export default function Home() {
   const [direccionActual, setDireccionActual] = useState();
   useEffect(() => {
     ObtenerTipos();
+    // Precarga de modelos mientras el usuario digita la cédula: saca los ~2 MB
+    // de pesos del camino crítico. Si falla (red), startCamera() reintenta.
+    cargarModelos().catch(() => {});
+    // Prefetch de las rutas a las que este flujo puede redirigir.
+    try {
+      router.prefetch("/about");
+      router.prefetch("/notFoundUser");
+      router.prefetch("/registrarUSer");
+      router.prefetch("/error");
+    } catch {}
     const handleResize = () => {
       setIsMobile(window.innerWidth < 768);
     };
@@ -110,10 +126,7 @@ export default function Home() {
 
   const ObtenerTipos = async () => {
     try {
-      const res = await fetch("/api/ListadoMarcajes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
+      const res = await fetch("/api/ListadoMarcajes");
       const data = await res.json();
       if (data.ok) {
         setTipoMarcaje(data.result);
@@ -149,14 +162,18 @@ export default function Home() {
   const estaDentroArea = rango !== null && rango <= geoPermitida.radio;
 
   async function startCamera() {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
-    });
-    if (videoRef.current) videoRef.current.srcObject = stream;
-    await faceapi.nets.tinyFaceDetector.loadFromUri("/models");
-    await faceapi.nets.faceLandmark68Net.loadFromUri("/models");
-    await faceapi.nets.faceRecognitionNet.loadFromUri("/models");
-    await faceapi.nets.faceExpressionNet.loadFromUri("/models");
+    // Permiso de cámara y carga de modelos en paralelo. Si los modelos ya se
+    // precargaron al montar la página, cargarModelos() resuelve al instante.
+    const [stream] = await Promise.all([
+      navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+      }),
+      cargarModelos(),
+    ]);
+    // Asignación con reintento: en el reinicio tras un intento fallido, el
+    // stream puede resolver antes de que React re-monte el <video>. El viejo
+    // `if (videoRef.current)` descartaba el stream y la cámara quedaba muerta.
+    asignarStreamAlVideo(stream);
     setModelosCargados(true);
   }
 
@@ -171,7 +188,26 @@ export default function Home() {
     }
   };
 
+  // Asigna el stream al <video> reintentando por rAF: al paralelizar, el
+  // stream puede resolver antes de que React haya montado el elemento.
+  const asignarStreamAlVideo = (stream, intentos = 0) => {
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+    } else if (intentos < 120) {
+      requestAnimationFrame(() => asignarStreamAlVideo(stream, intentos + 1));
+    }
+  };
+
   const ValidarMarcaje = async (cedula, tipoMarcaje2) => {
+    // Cámara solicitada EN PARALELO con la consulta al servidor. Si la
+    // validación falla o redirige, los tracks se detienen de inmediato.
+    const streamPromise = navigator.mediaDevices
+      .getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" } })
+      .catch(() => null);
+    const detenerStream = () => {
+      streamPromise.then((s) => s && s.getTracks().forEach((t) => t.stop()));
+    };
+
     try {
       const id_usuario = cedula;
       const tipoMarcaje = tipoMarcaje2;
@@ -180,6 +216,8 @@ export default function Home() {
       setIniciarProceso(true);
       setLoadingInit(true);
       setMensaje2("Verificando tu información...");
+      limpiarMarcas();
+      marcar("boton-registrar");
 
       const res = await fetch("/api/validarMarcaje", {
         method: "POST",
@@ -187,8 +225,10 @@ export default function Home() {
         body: JSON.stringify({ id_usuario, tipoMarcaje }),
       });
       const data = await res.json();
+      marcar("respuesta-validarMarcaje");
 
       if (!data.ok || !data.result || Object.keys(data.result).length === 0) {
+        detenerStream();
         setErrorCedula("Cédula no encontrada. Verifica el número ingresado.");
         setIniciarProceso(false);
         setLoadingInit(true);
@@ -202,30 +242,41 @@ export default function Home() {
       setHora(data.result.horario);
 
       if (String(data.result.ExistsUser) === "0") {
+        detenerStream();
         router.push("/notFoundUser");
         return;
       }
 
       if (String(data.result.isregistrado) === "0") {
+        detenerStream();
         setUsuario(id_usuario);
         router.push(`/registrarUSer?iosono=${id_usuario}`);
         return;
       }
 
       if (String(data.result.marcado) === "1") {
+        detenerStream();
         router.push("/about");
         return;
       }
 
-      // Usuario existe, registrado y sin marcaje hoy → abrir cámara
+      // Usuario existe, registrado y sin marcaje hoy → mostrar cámara
       setLoadingInit(false);
       setMensaje2("");
-      startCamera().catch(() => {
+      try {
+        const [stream] = await Promise.all([streamPromise, cargarModelos()]);
+        if (!stream) throw new Error("Sin acceso a la cámara");
+        marcar("camara-lista");
+        asignarStreamAlVideo(stream);
+        setModelosCargados(true);
+        marcar("modelos-listos");
+      } catch {
         setMensaje2("ERROR: No se pudo acceder a la cámara. Verifica que hayas dado permiso de cámara e intenta de nuevo.");
         setLoadingInit(true);
-      });
+      }
     } catch (error) {
       console.error(error);
+      detenerStream();
       setErrorCedula("Error de conexión. Verifica tu red e intenta de nuevo.");
       setIniciarProceso(false);
       setLoadingInit(true);
@@ -268,10 +319,15 @@ export default function Home() {
     setTiporegistro(isregistro === "true");
   }, [isregistro]);
 
-  const obtenerDeteccionRapida = async () => {
+  // Las expresiones faciales solo se calculan cuando el reto activo las
+  // necesita ("Sonreír"). Medido: 214 ms/frame con expresiones vs 113 ms sin
+  // ellas. La detección, los landmarks y todos los umbrales no cambian.
+  const obtenerDeteccionRapida = async (conExpresiones) => {
     if (!videoRef.current) return null;
     const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.35 });
-    return (await faceapi.detectSingleFace(videoRef.current, options).withFaceLandmarks().withFaceExpressions()) || null;
+    const tarea = faceapi.detectSingleFace(videoRef.current, options).withFaceLandmarks();
+    if (conExpresiones) return (await tarea.withFaceExpressions()) || null;
+    return (await tarea) || null;
   };
 
   const obtenerDescriptorFinal = async () => {
@@ -442,7 +498,7 @@ export default function Home() {
   };
 
   const iniciarContador = () => {
-    if (timerId) clearInterval(timerId);
+    if (timerRef.current) clearInterval(timerRef.current);
     setContador(10);
     const id = setInterval(() => {
       setContador((prev) => {
@@ -462,7 +518,7 @@ export default function Home() {
         return prev - 1;
       });
     }, 1000);
-    setTimerId(id);
+    timerRef.current = id;
   };
 
   const generarReto = () => {
@@ -473,18 +529,32 @@ export default function Home() {
     while (nuevoReto === ultimoReto) {
       nuevoReto = retos[Math.floor(Math.random() * retos.length)];
     }
+    // Si el reto exige expresiones, asegurar que su red esté lista (en
+    // condiciones normales ya cargó en segundo plano y esto no espera nada).
+    if (nuevoReto === "Sonreír") cargarExpresiones().catch(() => {});
     setReto(nuevoReto);
     setUltimoReto(nuevoReto);
     setMensaje("");
     setValidando(true);
     setParpadeos(0);
     setGiroDetectado(false);
+    marcar("reto-generado");
     iniciarContador();
   };
 
   const reiniciarSistema = () => {
+    // Matar el contador residual del intento anterior: seguía corriendo tras
+    // el reinicio y ~1 s después disparaba "Tiempo agotado", borrando el reto
+    // activo del nuevo intento.
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
     procesandoRef.current = false;
     generandoRetoRef.current = false;
+    primeraInferenciaRef.current = false;
+    rostroMarcadoRef.current = false;
+    isDetectingRef.current = false;
     setProcesando(false);
     movimientoConfirmadoRef.current = false;
     histNarizRef.current = [];
@@ -512,23 +582,26 @@ export default function Home() {
       c.width = video.videoWidth;
       c.height = video.videoHeight;
       c.getContext("2d").drawImage(video, 0, 0);
-      c.toBlob((blob) => resolve(blob), "image/png");
+      // JPEG 0.8 en vez de PNG: ~10x menos peso y encode mucho más rápido,
+      // calidad más que suficiente como evidencia fotográfica.
+      c.toBlob((blob) => resolve(blob), "image/jpeg", 0.8);
     });
 
   const subirFotoS3 = async (blob) => {
     const form = new FormData();
-    form.append("archivo", blob, `bio_${cedula}_${Date.now()}.png`);
+    form.append("archivo", blob, `bio_${cedula}_${Date.now()}.jpg`);
     form.append("Folder", "SINTESISGESTION_ARCHIVADOR/IMGBIOMETRICO");
-    const res = await fetch("/api/uploadFoto", { method: "POST", body: form });
+    // Con timeout: sin él, un S3 lento dejaba "Guardando tu registro..."
+    // colgado indefinidamente.
+    const res = await fetchConTimeout("/api/uploadFoto", { method: "POST", body: form }, 15000);
     const data = await res.json();
-    console.log(data);
 
     return data.url || data.Url || data.URL || "";
   };
 
   const guardarIntentoFallido = async (fotoUrl) => {
     try {
-      await fetch("/api/guardarIntento", {
+      await fetchConTimeout("/api/guardarIntento", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -582,14 +655,26 @@ export default function Home() {
         }),
       });
       const data = await res.json();
+      marcar("respuesta-servidor");
 
       if (data.ok) {
         if (data.coincide == 1) {
           stopCamera();
           setMensaje2(data.mensaje);
+          marcar("confirmacion-mostrada");
+          resumenMarcaje();
           router.push("/about");
         }
+        // Respuesta sin campo "coincide" (p. ej. usuario sin registro
+        // biométrico): antes ninguna rama corría y el spinner "Verificando
+        // identidad..." quedaba pegado para siempre.
+        if (data.coincide == null) {
+          setMensaje2("ERROR: " + (data.mensaje || "No se pudo validar tu identidad. Intenta de nuevo."));
+          setLoadingInit(true);
+          return;
+        }
         if (data.coincide == 0) {
+          resumenMarcaje();
           intentosFallidosRef.current += 1;
           stopCamera();
           setLoadingInit(true);
@@ -600,7 +685,16 @@ export default function Home() {
             setMensaje2("Guardando tu registro...");
             const blob = fotoBlobRef.current;
             try {
-              const fotoUrl = blob ? await subirFotoS3(blob) : "";
+              // La foto es evidencia opcional: si su subida falla, el intento
+              // se guarda igual en la base de datos (con URL vacía).
+              let fotoUrl = "";
+              if (blob) {
+                try {
+                  fotoUrl = await subirFotoS3(blob);
+                } catch (e) {
+                  console.error("No se pudo subir la foto, se guarda el intento sin ella:", e);
+                }
+              }
               await guardarIntentoFallido(fotoUrl);
               setMensaje2("Registro exitoso. No pudimos reconocerte pero tu registro quedó guardado.");
               setTimeout(() => router.push("/about"), 3500);
@@ -638,7 +732,10 @@ export default function Home() {
 
   useEffect(() => {
     if (!modelosCargados) return;
-    if (!videoRef.current) return;
+    // Nota: NO abortar si videoRef aún es null. Si las dependencias cambian
+    // mientras la cámara está desmontada (pantalla de carga tras un fallo),
+    // abortar aquí dejaba el sistema sin intervalo de detección para siempre.
+    // El propio intervalo ya valida video/canvas en cada tick.
 
     let intervalo = setInterval(async () => {
       if (isDetectingRef.current) return;
@@ -651,7 +748,14 @@ export default function Home() {
         if (!video || video.videoWidth === 0 || video.videoHeight === 0) return;
         if (!canvas) return;
 
-        const deteccion = await obtenerDeteccionRapida();
+        // Solo pedir expresiones si el reto activo es "Sonreír" y su red ya
+        // terminó de cargar (carga en segundo plano desde el inicio).
+        const requiereExpresiones = validando && reto === "Sonreír" && !!faceapi.nets.faceExpressionNet.params;
+        const deteccion = await obtenerDeteccionRapida(requiereExpresiones);
+        if (!primeraInferenciaRef.current) {
+          primeraInferenciaRef.current = true;
+          marcar("primera-inferencia-video");
+        }
 
         const ctx = canvas.getContext("2d");
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -664,6 +768,10 @@ export default function Home() {
         }
 
         setRostroPresente(true);
+        if (!rostroMarcadoRef.current) {
+          rostroMarcadoRef.current = true;
+          marcar("rostro-detectado");
+        }
 
         const displaySize = { width: video.videoWidth, height: video.videoHeight };
         faceapi.matchDimensions(canvas, displaySize);
@@ -693,21 +801,28 @@ export default function Home() {
             if (rangoX > UMBRAL || rangoY > UMBRAL) {
               movimientoConfirmadoRef.current = true;
               setMovimientoConfirmado(true);
+              marcar("movimiento-confirmado");
               generarReto();
             }
           }
         }
 
         if (validando && !procesandoRef.current) {
-          if (reto === "Sonreír" && deteccion.expressions.happy > 0.7) {
+          // Mismo umbral de siempre (happy > 0.7); el guard de expressions
+          // solo evita leer un frame donde la red aún no había cargado.
+          if (reto === "Sonreír" && deteccion.expressions && deteccion.expressions.happy > 0.7) {
             procesandoRef.current = true;
             setProcesando(true);
             dibujarRecuadroRostro(ctx, box, "cumplido");
             setValidando(false);
-            if (timerId) clearInterval(timerId);
+            if (timerRef.current) clearInterval(timerRef.current);
+            marcar("gesto-cumplido");
             try {
-              const finalSonrisa = await obtenerDescriptorFinal();
-              fotoBlobRef.current = await capturarFotoDesdeVideo();
+              // Descriptor y foto en paralelo: ambos leen el mismo frame y no
+              // dependen entre sí. Antes eran dos esperas secuenciales.
+              const [finalSonrisa, fotoBlob] = await Promise.all([obtenerDescriptorFinal(), capturarFotoDesdeVideo()]);
+              marcar("descriptor-y-foto-listos");
+              fotoBlobRef.current = fotoBlob;
               await stopCamera();
               setMensaje2("Verificando identidad...");
               setLoadingInit(true);
@@ -740,10 +855,12 @@ export default function Home() {
               dibujarRecuadroRostro(ctx, box, "cumplido");
               setGiroDetectado(true);
               setValidando(false);
-              if (timerId) clearInterval(timerId);
+              if (timerRef.current) clearInterval(timerRef.current);
+              marcar("gesto-cumplido");
               try {
-                const finalGiro = await obtenerDescriptorFinal();
-                fotoBlobRef.current = await capturarFotoDesdeVideo();
+                const [finalGiro, fotoBlob] = await Promise.all([obtenerDescriptorFinal(), capturarFotoDesdeVideo()]);
+                marcar("descriptor-y-foto-listos");
+                fotoBlobRef.current = fotoBlob;
                 await stopCamera();
                 setMensaje2("Verificando identidad...");
                 setLoadingInit(true);
@@ -770,7 +887,10 @@ export default function Home() {
     }, 150);
 
     return () => clearInterval(intervalo);
-  }, [reto, modelosCargados, validando, rostroPresente, parpadeos, ojosCerrados, giroDetectado]);
+    // Solo dependencias que el loop realmente lee. rostroPresente/parpadeos/
+    // ojosCerrados solo se escriben aquí; tenerlas como deps destruía y
+    // recreaba el intervalo en cada transición sin necesidad.
+  }, [reto, modelosCargados, validando, giroDetectado]);
 
   const formatFechaHora = (isoString) => {
     const date = new Date(isoString);

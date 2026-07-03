@@ -2,7 +2,18 @@
 
 import { getPool } from '@/lib/db';
 import sql from 'mssql';
-import * as faceapi from 'face-api.js';
+
+// Distancia euclidiana entre dos descriptores de 128 floats. Reemplaza el
+// import de face-api.js completo (que arrastra tfjs y disparaba el cold start
+// del servidor) por la única operación que realmente se necesitaba.
+const euclideanDistance = (a, b) => {
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) {
+    const d = a[i] - b[i];
+    sum += d * d;
+  }
+  return Math.sqrt(sum);
+};
 
 export async function POST(req) {
   try {
@@ -27,7 +38,7 @@ export async function POST(req) {
 
     let usuarioCoincidente = null;
     for (const usuario of registros) {
-      const distancia = faceapi.euclideanDistance(descriptor, usuario.descriptor);
+      const distancia = euclideanDistance(descriptor, usuario.descriptor);
       if (distancia <= 0.5) {
         usuarioCoincidente = usuario;
         break;
@@ -46,7 +57,7 @@ export async function POST(req) {
       );
     }
 
-    const spResult = await pool
+    await pool
       .request()
       .input('id_usuario', sql.BigInt, id_usuario)
       .input('resultado', sql.Bit, 1)
@@ -58,13 +69,14 @@ export async function POST(req) {
       .input('direccionActual', sql.VarChar(1000), String(ubicacionMarcada || ''))
       .execute('RRHH.ST_ValidacionAsistencia');
 
+    // No devolver el objeto mssql completo (recordsets, metadata, rowsAffected):
+    // el cliente solo lee ok/coincide/mensaje.
     return new Response(
       JSON.stringify({
         ok: true,
         mensaje: `✅ Persona validada y guardada en la base de datos`,
         coincide: 1,
         registrado: 1,
-        result: spResult,
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );

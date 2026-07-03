@@ -13,14 +13,15 @@ export async function POST(req) {
 
     const pool = await getPool();
 
-    const result = await pool
+    await pool
       .request()
       .input('id_usuario', sql.BigInt, id_usuario)
       .input('Descriptor', sql.NVarChar(sql.MAX), JSON.stringify(descriptor))
       .input('lat_enrolado', sql.VarChar(100), String(latitude))
       .input('lon_enrolado', sql.VarChar(100), String(longitude))
       .execute('RRHH.ST_RegistroBiometrico');
-    return new Response(JSON.stringify({ ok: true, mensaje: '✅ Usuario registrado', result }), {
+    // El cliente solo lee ok/mensaje; no serializar el objeto mssql completo.
+    return new Response(JSON.stringify({ ok: true, mensaje: '✅ Usuario registrado' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });

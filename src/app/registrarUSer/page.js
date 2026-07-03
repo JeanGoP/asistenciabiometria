@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import * as faceapi from 'face-api.js';
+import { cargarModelos } from '@/lib/faceModels';
 import { useAppContext } from '@/context/AppContext';
 import { Lightbulb, Glasses, Crosshair, Contrast, Smartphone, CheckCircle2, Smile, ArrowLeftRight, TriangleAlert, User } from 'lucide-react';
 
@@ -126,17 +127,15 @@ export default function RegistrarUsuario() {
   // ── Cámara y modelos ────────────────────────────────────────────────────────
 
   async function startCamera() {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
-    });
-    if (videoRef.current) videoRef.current.srcObject = stream;
-
-    // Carga paralela — sin ssdMobilenetv1 (no se usa aquí)
-    await Promise.all([
-      faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
-      faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
-      faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
+    // Cargador compartido: si el usuario viene de la página principal los
+    // modelos ya están en memoria y esto resuelve al instante.
+    const [stream] = await Promise.all([
+      navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+      }),
+      cargarModelos(),
     ]);
+    if (videoRef.current) videoRef.current.srcObject = stream;
     setModelosCargados(true);
   }
 
@@ -166,6 +165,8 @@ export default function RegistrarUsuario() {
   // ── Inicio automático (3 s en vez de 10 s) ──────────────────────────────────
 
   useEffect(() => {
+    // Precarga durante los 3 s de la pantalla de instrucciones.
+    cargarModelos().catch(() => {});
     const timer = setTimeout(() => {
       setMostrarCamara(true);
       startCamera();
