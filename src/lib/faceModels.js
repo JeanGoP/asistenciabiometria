@@ -2,7 +2,7 @@ import * as faceapi from 'face-api.js';
 
 // Promesas a nivel de módulo: los pesos se descargan y compilan UNA sola vez
 // por sesión del navegador, sin importar reinicios de cámara o navegación.
-let modelosPromise = null; // detector + landmarks + descriptor (+ warm-up completo)
+let modelosPromise = null; // detector + landmarks (completo y tiny) + descriptor (+ warm-up completo)
 let expresionesPromise = null; // red de expresiones: carga en segundo plano
 
 // Rostro sintético dibujado con primitivas de canvas — NO es una fotografía de
@@ -98,6 +98,10 @@ async function warmupCompleto() {
   stats['warmup landmarks (ms)'] = Math.round(performance.now() - t);
 
   t = performance.now();
+  await faceapi.nets.faceLandmark68TinyNet.detectLandmarks(cara);
+  stats['warmup landmarks tiny (ms)'] = Math.round(performance.now() - t);
+
+  t = performance.now();
   await faceapi.nets.faceRecognitionNet.computeFaceDescriptor(cara);
   stats['warmup descriptor (ms)'] = Math.round(performance.now() - t);
 
@@ -107,6 +111,11 @@ async function warmupCompleto() {
   const det = await faceapi.detectSingleFace(cara, opts).withFaceLandmarks().withFaceDescriptor();
   stats['warmup cadena completa (ms)'] = Math.round(performance.now() - t);
   stats['rostro sintetico detectado'] = !!det;
+
+  // Cadena del ciclo de detección (detector + landmarks tiny).
+  t = performance.now();
+  await faceapi.detectSingleFace(cara, opts).withFaceLandmarks(true);
+  stats['warmup cadena ciclo tiny (ms)'] = Math.round(performance.now() - t);
 
   console.log('[biometria] warm-up de shaders: ' + JSON.stringify(stats));
   if (typeof window !== 'undefined') window.__warmupStats = stats;
@@ -118,6 +127,9 @@ export function cargarModelos() {
     modelosPromise = Promise.all([
       faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
       faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
+      // Landmarks tiny (~77 KB): solo para el ciclo de detección por frame. La
+      // huella final y el reto "Sonreír" siguen usando el modelo completo.
+      faceapi.nets.faceLandmark68TinyNet.loadFromUri('/models'),
       faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
     ])
       .then(async () => {

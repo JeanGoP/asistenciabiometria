@@ -1,26 +1,37 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import "./indexPrincipal.css";
 import * as faceapi from "face-api.js";
 import { cargarModelos, cargarExpresiones } from "@/lib/faceModels";
 import { marcar, resumenMarcaje, limpiarMarcas } from "@/lib/perf";
 import { useAppContext } from "@/context/AppContext";
+import { Cabecera, Pie } from "@/components/marca";
 import {
-  ScanFace,
-  User,
-  MapPin,
-  Clock,
-  TriangleAlert,
-  Smile,
   ArrowLeftRight,
+  BadgeCheck,
+  Building2,
+  CircleCheck,
+  ClipboardList,
+  Clock,
+  Coffee,
   Crosshair,
+  DoorClosed,
+  DoorOpen,
+  Fingerprint,
+  GraduationCap,
+  IdCard,
+  Lightbulb,
   LogIn,
   LogOut,
+  MapPin,
+  RotateCcw,
+  ScanFace,
+  ShieldCheck,
+  Smile,
+  Sparkles,
+  Timer,
+  TriangleAlert,
   Utensils,
-  ClipboardList,
-  CircleDot,
-  CheckCircle2,
 } from "lucide-react";
 
 export default function Home() {
@@ -59,6 +70,7 @@ export default function Home() {
   const histNarizRef = useRef([]);
   const intentosFallidosRef = useRef(0);
   const fotoBlobRef = useRef(null);
+  const streamRef = useRef(null);
   const rangoRef = useRef(null);
   const ubicacionRef = useRef({ lat: null, lon: null });
   const geoPermitidaRef = useRef({ lat: 0, lon: 0, radio: 50 });
@@ -76,7 +88,6 @@ export default function Home() {
   let isregistro = false;
   const [ubicacion, setUbicacion] = useState({ lat: null, lon: null });
   const [isMobile, setIsMobile] = useState(false);
-  const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1);
   const [direccion, setDireccion] = useState();
   const [hora, setHora] = useState();
   const [rango, setRango] = useState();
@@ -100,7 +111,12 @@ export default function Home() {
     handleResize();
 
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      // El stream puede seguir vivo sin <video> montado (entre intentos): si
+      // el usuario sale de la página, apagar la cámara igualmente.
+      stopCamera();
+    };
   }, []);
 
   useEffect(() => {
@@ -162,14 +178,21 @@ export default function Home() {
   const estaDentroArea = rango !== null && rango <= geoPermitida.radio;
 
   async function startCamera() {
+    // En el reintento tras un primer "no coincide" la cámara no se apagó:
+    // se reutiliza el mismo stream y se evita un nuevo getUserMedia (en
+    // celulares cuesta entre 0.3 y 1 s volver a abrir la cámara).
+    const streamVivo = streamRef.current?.getVideoTracks().some((t) => t.readyState === "live");
     // Permiso de cámara y carga de modelos en paralelo. Si los modelos ya se
     // precargaron al montar la página, cargarModelos() resuelve al instante.
     const [stream] = await Promise.all([
-      navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
-      }),
+      streamVivo
+        ? streamRef.current
+        : navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+          }),
       cargarModelos(),
     ]);
+    streamRef.current = stream;
     // Asignación con reintento: en el reinicio tras un intento fallido, el
     // stream puede resolver antes de que React re-monte el <video>. El viejo
     // `if (videoRef.current)` descartaba el stream y la cámara quedaba muerta.
@@ -177,12 +200,14 @@ export default function Home() {
     setModelosCargados(true);
   }
 
+  // Detiene el stream guardado en streamRef y no solo el del <video>: mientras
+  // se verifica la identidad el <video> está desmontado, pero el stream sigue
+  // vivo para poder reutilizarlo en el reintento.
   const stopCamera = async () => {
-    const stream = videoRef.current?.srcObject;
-    if (stream) {
-      const tracks = stream.getTracks();
-      tracks.forEach((track) => track.stop());
-    }
+    [streamRef.current, videoRef.current?.srcObject].forEach((stream) => {
+      if (stream) stream.getTracks().forEach((track) => track.stop());
+    });
+    streamRef.current = null;
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
@@ -267,6 +292,7 @@ export default function Home() {
         const [stream] = await Promise.all([streamPromise, cargarModelos()]);
         if (!stream) throw new Error("Sin acceso a la cámara");
         marcar("camara-lista");
+        streamRef.current = stream;
         asignarStreamAlVideo(stream);
         setModelosCargados(true);
         marcar("modelos-listos");
@@ -322,12 +348,18 @@ export default function Home() {
   // Las expresiones faciales solo se calculan cuando el reto activo las
   // necesita ("Sonreír"). Medido: 214 ms/frame con expresiones vs 113 ms sin
   // ellas. La detección, los landmarks y todos los umbrales no cambian.
+  //
+  // Sin expresiones (presencia, movimiento previo y reto "Mover la cabeza")
+  // basta el modelo tiny de landmarks: solo se lee la caja y la punta de la
+  // nariz. Con expresiones se mantiene el modelo completo porque face-api
+  // recorta el rostro para la red de expresiones a partir de los landmarks;
+  // así el umbral happy > 0.7 se evalúa exactamente igual que antes.
   const obtenerDeteccionRapida = async (conExpresiones) => {
     if (!videoRef.current) return null;
     const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.35 });
-    const tarea = faceapi.detectSingleFace(videoRef.current, options).withFaceLandmarks();
-    if (conExpresiones) return (await tarea.withFaceExpressions()) || null;
-    return (await tarea) || null;
+    const deteccion = faceapi.detectSingleFace(videoRef.current, options);
+    if (conExpresiones) return (await deteccion.withFaceLandmarks().withFaceExpressions()) || null;
+    return (await deteccion.withFaceLandmarks(true)) || null;
   };
 
   const obtenerDescriptorFinal = async () => {
@@ -504,7 +536,7 @@ export default function Home() {
       setContador((prev) => {
         if (prev <= 1) {
           clearInterval(id);
-          setMensaje("⏱️ Tiempo agotado, intenta de nuevo");
+          setMensaje("Se agotó el tiempo. Intenta de nuevo.");
           setValidando(false);
           setReto("");
           setParpadeos(0);
@@ -627,6 +659,10 @@ export default function Home() {
   };
 
   const validarPersona = async (descriptor) => {
+    // La cámara sigue encendida mientras se verifica. Solo el primer "no
+    // coincide" la conserva para el reintento; cualquier otra salida (éxito,
+    // segundo fallo, error o timeout) la apaga en el finally.
+    let conservarCamara = false;
     try {
       if (!descriptor || descriptor.length === 0) {
         setMensaje2("ERROR: No se detectó el rostro. Intenta de nuevo.");
@@ -676,10 +712,10 @@ export default function Home() {
         if (data.coincide == 0) {
           resumenMarcaje();
           intentosFallidosRef.current += 1;
-          stopCamera();
           setLoadingInit(true);
 
           if (intentosFallidosRef.current >= 2) {
+            stopCamera();
             intentosFallidosRef.current = 0;
             setRostroCoincide(true);
             setMensaje2("Guardando tu registro...");
@@ -708,6 +744,7 @@ export default function Home() {
               }, 5000);
             }
           } else {
+            conservarCamara = true;
             setRostroCoincide(false);
             iniciarContador();
             setTimeout(() => {
@@ -727,6 +764,8 @@ export default function Home() {
           ? "ERROR: El servidor tardó demasiado. Verifica tu conexión e intenta de nuevo."
           : "ERROR: Error al validar identidad. Intenta de nuevo.";
       setMensaje2(msg);
+    } finally {
+      if (!conservarCamara) stopCamera();
     }
   };
 
@@ -735,11 +774,31 @@ export default function Home() {
     // Nota: NO abortar si videoRef aún es null. Si las dependencias cambian
     // mientras la cámara está desmontada (pantalla de carga tras un fallo),
     // abortar aquí dejaba el sistema sin intervalo de detección para siempre.
-    // El propio intervalo ya valida video/canvas en cada tick.
+    // El propio ciclo ya valida video/canvas en cada tick.
 
-    let intervalo = setInterval(async () => {
-      if (isDetectingRef.current) return;
+    // Ciclo autoprogramado en vez de setInterval(150): el siguiente tick se
+    // agenda al terminar el actual, apuntando a la misma cadencia de 150 ms.
+    // En equipos rápidos el ritmo es el mismo de antes; en equipos donde la
+    // inferencia tarda más de 150 ms, setInterval descartaba el tick ocupado
+    // y el ritmo real caía a 300 ms (el movimiento previo, que exige 15
+    // muestras, tardaba el doble). Ahora el siguiente frame arranca enseguida.
+    const CADENCIA_MS = 150;
+    let activo = true;
+    let timeoutId = null;
+    const programar = (ms) => {
+      if (activo) timeoutId = setTimeout(tick, ms);
+    };
+
+    const tick = async () => {
+      if (!activo) return;
+      // Un tick del ciclo anterior (antes de recrear el efecto) puede seguir
+      // en curso: reintentar en breve en lugar de solaparse.
+      if (isDetectingRef.current) {
+        programar(30);
+        return;
+      }
       isDetectingRef.current = true;
+      const inicioTick = performance.now();
 
       try {
         const video = videoRef.current;
@@ -777,9 +836,6 @@ export default function Home() {
         faceapi.matchDimensions(canvas, displaySize);
         const resized = faceapi.resizeResults(deteccion, displaySize);
         const box = resized.detection.box;
-
-        const ratio = box.width / canvas.width;
-        const distanciaOk = ratio >= 0.2 && ratio <= 0.6;
 
         const estadoRecuadro = !validando ? "presente" : "validando";
         dibujarRecuadroRostro(ctx, box, estadoRecuadro);
@@ -823,12 +879,14 @@ export default function Home() {
               const [finalSonrisa, fotoBlob] = await Promise.all([obtenerDescriptorFinal(), capturarFotoDesdeVideo()]);
               marcar("descriptor-y-foto-listos");
               fotoBlobRef.current = fotoBlob;
-              await stopCamera();
+              // La cámara no se apaga aquí: validarPersona decide si se
+              // conserva para el reintento o se apaga.
               setMensaje2("Verificando identidad...");
               setLoadingInit(true);
               if (finalSonrisa) {
                 validarPersona(finalSonrisa.descriptor);
               } else {
+                await stopCamera();
                 procesandoRef.current = false;
                 setProcesando(false);
                 setMensaje2("ERROR: No se pudo capturar el rostro. Intenta de nuevo.");
@@ -861,12 +919,14 @@ export default function Home() {
                 const [finalGiro, fotoBlob] = await Promise.all([obtenerDescriptorFinal(), capturarFotoDesdeVideo()]);
                 marcar("descriptor-y-foto-listos");
                 fotoBlobRef.current = fotoBlob;
-                await stopCamera();
+                // La cámara no se apaga aquí: validarPersona decide si se
+                // conserva para el reintento o se apaga.
                 setMensaje2("Verificando identidad...");
                 setLoadingInit(true);
                 if (finalGiro) {
                   validarPersona(finalGiro.descriptor);
                 } else {
+                  await stopCamera();
                   procesandoRef.current = false;
                   setProcesando(false);
                   setMensaje2("ERROR: No se pudo capturar el rostro. Intenta de nuevo.");
@@ -883,10 +943,16 @@ export default function Home() {
         }
       } finally {
         isDetectingRef.current = false;
+        programar(Math.max(0, CADENCIA_MS - (performance.now() - inicioTick)));
       }
-    }, 150);
+    };
 
-    return () => clearInterval(intervalo);
+    programar(0);
+
+    return () => {
+      activo = false;
+      clearTimeout(timeoutId);
+    };
     // Solo dependencias que el loop realmente lee. rostroPresente/parpadeos/
     // ojosCerrados solo se escriben aquí; tenerlas como deps destruía y
     // recreaba el intervalo en cada transición sin necesidad.
@@ -908,523 +974,323 @@ export default function Home() {
     });
   });
 
-  const horaActual = new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
-  const fechaActual = capitalize(new Date().toLocaleDateString("es-CO", { weekday: "long", year: "numeric", month: "long", day: "numeric" }));
   const jornadaHora = hora ? `${hora.toString().substring(0, 5)} ${parseInt(hora.toString().substring(0, 2)) < 12 ? "AM" : "PM"}` : "";
 
+  // Ícono de cada tipo de registro. Los de cierre (fin, regreso) van en azul
+  // oscuro para que cada par inicio–fin se distinga de un vistazo.
   const iconoMarcaje = (nombre = "") => {
     const n = nombre.toLowerCase();
-    if (n.includes("ingreso") || n.includes("entrada")) return <LogIn size={22} color="#16a34a" />;
-    if (n.includes("salida")) return <LogOut size={22} color="#dc2626" />;
-    if (n.includes("almuerzo") || n.includes("lunch")) return <Utensils size={22} color="#d97706" />;
-    if (n.includes("permiso")) return <ClipboardList size={22} color="#7c3aed" />;
-    return <CircleDot size={22} color="#2563eb" />;
+    if (n.includes("almuerzo") || n.includes("lunch")) return Utensils;
+    if (n.includes("descanso") || n.includes("pausa")) return Coffee;
+    if (n.includes("capacit")) return GraduationCap;
+    if (n.includes("baño") || n.includes("bano")) return n.includes("regreso") ? DoorClosed : DoorOpen;
+    if (n.includes("permiso")) return ClipboardList;
+    if (n.includes("fin") || n.includes("salida")) return LogOut;
+    if (n.includes("inicio") || n.includes("ingreso") || n.includes("entrada")) return LogIn;
+    return Fingerprint;
+  };
+  const esCierre = (nombre = "") => /^(fin|regreso)\b/i.test(nombre.trim()) || /^salida$/i.test(nombre.trim());
+
+  // Algunos mensajes de estado traen un emoji al inicio ("📡 …"); la interfaz
+  // los muestra sin él.
+  const sinEmoji = (texto = "") => texto.replace(/^[^\p{L}\p{N}¡¿]+/u, "");
+
+  const volverAlInicio = () => {
+    setIniciarProceso(false);
+    setLoadingInit(true);
+    setMensaje2("");
+  };
+
+  const PASOS_RETO = {
+    "Mover la cabeza": {
+      titulo: "Gira la cabeza de un lado a otro",
+      pasos: ["Mira hacia tu izquierda lentamente", "Luego mira hacia tu derecha"],
+      consejo: "Mantén tu rostro visible frente a la cámara",
+    },
+    Sonreír: {
+      titulo: "Sonríe a la cámara",
+      pasos: ["Mira directo a la cámara", "Haz una sonrisa amplia y natural"],
+      consejo: "Mantén la sonrisa uno o dos segundos",
+    },
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f0f4f8" }}>
+    <div className="sg-app">
+      <Cabecera />
+
       {/* ── PANTALLA INICIO ─────────────────────────────────────────────── */}
       {!iniciarProceso && (
-        <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-          {/* Header */}
-          <div style={{ background: "linear-gradient(135deg,#0f7cc0,#1a9fd4)", padding: "28px 24px 36px", color: "#fff" }}>
-            <div style={{ maxWidth: 480, margin: "0 auto" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
-                <ScanFace size={34} color="#fff" />
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: 1 }}>CONTROL BIOMÉTRICO</h1>
-                    <span
-                      style={{ fontSize: 10, fontWeight: 700, background: "rgba(255,255,255,0.2)", borderRadius: 6, padding: "2px 7px", letterSpacing: 0.5 }}
-                    >
-                      v{process.env.NEXT_PUBLIC_VERSION}
-                    </span>
-                  </div>
-                  <p style={{ margin: 0, fontSize: 12, opacity: 0.85 }}>
-                    {fechaActual} · {horaActual}
-                  </p>
-                </div>
-              </div>
+        <main className="sg-cuerpo">
+          <section className="sg-panel">
+            <h1 className="sg-titulo">Registro de asistencia</h1>
+            <p className="sg-sub">Ingresa tu cédula y elige el tipo de registro.</p>
+
+            <label className="sg-etiqueta" htmlFor="cedula">
+              Número de cédula
+            </label>
+            <div className={`sg-campo${errorCedula ? " sg-con-error" : ""}`}>
+              <IdCard size={18} className="sg-campo-ico" aria-hidden="true" />
+              <input
+                id="cedula"
+                className="sg-input"
+                type="number"
+                inputMode="numeric"
+                placeholder="Ej: 1234567890"
+                value={cedula}
+                aria-invalid={!!errorCedula}
+                onChange={(e) => {
+                  setCedula(e.target.value);
+                  setErrorCedula("");
+                }}
+              />
             </div>
-          </div>
+            {errorCedula && (
+              <p className="sg-msj-error" role="alert">
+                <TriangleAlert size={14} aria-hidden="true" /> {errorCedula}
+              </p>
+            )}
 
-          {/* Contenido */}
-          <div style={{ flex: 1, maxWidth: 480, margin: "0 auto", width: "100%", padding: "0 16px 32px", marginTop: -16 }}>
-            {/* Card principal */}
-            <div style={{ background: "#fff", borderRadius: 20, padding: "24px 20px", boxShadow: "0 4px 24px rgba(0,0,0,0.1)", marginBottom: 16 }}>
-              <p style={{ margin: "0 0 12px", fontSize: 13, color: "#6b7280", fontWeight: 600 }}>NÚMERO DE CÉDULA</p>
-              <div style={{ position: "relative", marginBottom: 24 }}>
-                <User size={18} color="#9ca3af" style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)" }} />
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  placeholder="Ej: 1234567890"
-                  value={cedula}
-                  onChange={(e) => {
-                    setCedula(e.target.value);
-                    setErrorCedula("");
-                  }}
-                  style={{
-                    width: "100%",
-                    padding: "14px 14px 14px 44px",
-                    borderRadius: 12,
-                    fontSize: 16,
-                    border: "2px solid #e5e7eb",
-                    outline: "none",
-                    boxSizing: "border-box",
-                    color: "#111827",
-                    background: "#f9fafb",
-                    fontWeight: 600,
-                    border: `2px solid ${errorCedula ? "#ef4444" : "#e5e7eb"}`,
-                    transition: "border-color 0.2s",
-                  }}
-                  onFocus={(e) => (e.target.style.borderColor = errorCedula ? "#ef4444" : "#0f7cc0")}
-                  onBlur={(e) => (e.target.style.borderColor = errorCedula ? "#ef4444" : "#e5e7eb")}
-                />
-                {errorCedula && (
-                  <p style={{ margin: "6px 0 0 4px", fontSize: 13, color: "#ef4444", fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
-                    <TriangleAlert size={14} /> {errorCedula}
-                  </p>
-                )}
+            <span className="sg-etiqueta">Tipo de registro</span>
+            {loadingTipos ? (
+              <div className="sg-opciones" aria-busy="true" aria-label="Cargando tipos de registro">
+                {Array.from({ length: 4 }, (_, i) => (
+                  <div key={i} className="sg-esqueleto" />
+                ))}
               </div>
-
-              <p style={{ margin: "0 0 12px", fontSize: 13, color: "#6b7280", fontWeight: 600 }}>TIPO DE REGISTRO</p>
-
-              {loadingTipos ? (
-                <div style={{ display: "flex", justifyContent: "center", padding: "24px 0" }}>
-                  <div className="spinner" />
-                </div>
-              ) : (
-                <div style={{ display: "grid", gridTemplateColumns: tipoSMarcaje.length > 2 ? "1fr 1fr" : "1fr", gap: 10 }}>
-                  {tipoSMarcaje.map((op, i) => (
-                    <button
-                      key={i}
-                      onClick={() => handleStart(op)}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 12,
-                        padding: "16px 18px",
-                        borderRadius: 14,
-                        border: "2px solid #e5e7eb",
-                        background: "#f9fafb",
-                        cursor: "pointer",
-                        textAlign: "left",
-                        transition: "all 0.2s",
-                        width: "100%",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = "#0f7cc0";
-                        e.currentTarget.style.background = "#eff6ff";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = "#e5e7eb";
-                        e.currentTarget.style.background = "#f9fafb";
-                      }}
-                    >
-                      {iconoMarcaje(op.Nombre)}
-                      <span style={{ fontWeight: 700, fontSize: 15, color: "#111827" }}>{op.Nombre}</span>
+            ) : (
+              <div className={`sg-opciones${tipoSMarcaje.length > 2 ? "" : " sg-una-columna"}`}>
+                {tipoSMarcaje.map((op, i) => {
+                  const Icono = iconoMarcaje(op.Nombre);
+                  return (
+                    <button key={i} type="button" className="sg-opcion" style={{ "--i": i }} onClick={() => handleStart(op)}>
+                      <span className={`sg-opcion-ico${esCierre(op.Nombre) ? " sg-cierre" : ""}`}>
+                        <Icono size={19} aria-hidden="true" />
+                      </span>
+                      <span className="sg-opcion-txt">{op.Nombre}</span>
                     </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
 
-            <p style={{ textAlign: "center", fontSize: 12, color: "#9ca3af" }}>Al continuar se activará la cámara para verificar tu identidad</p>
-          </div>
-        </div>
+          <p className="sg-nota">
+            <ShieldCheck size={15} aria-hidden="true" /> Al continuar se activará la cámara para verificar tu identidad.
+          </p>
+        </main>
       )}
 
-      {/* ── LOADING ─────────────────────────────────────────────────────── */}
+      {/* ── ESTADOS: cargando, error, no reconocido ─────────────────────── */}
       {iniciarProceso && loadingInit && (
-        <div
-          style={{
-            minHeight: "100vh",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "#f0f4f8",
-            padding: 24,
-          }}
-        >
-          {rostroCoincide ? (
-            <div style={{ textAlign: "center", maxWidth: 320 }}>
-              {mensaje2?.startsWith("ERROR:") ? (
-                <>
-                  <TriangleAlert size={52} color="#f59e0b" style={{ marginBottom: 16 }} />
-                  <p
-                    style={{
-                      color: "#92400e",
-                      fontSize: 15,
-                      fontWeight: 700,
-                      margin: "0 0 20px",
-                      background: "#fef3c7",
-                      padding: "12px 16px",
-                      borderRadius: 12,
-                    }}
-                  >
-                    {mensaje2.replace("ERROR: ", "")}
-                  </p>
-                  <button
-                    onClick={() => {
-                      setIniciarProceso(false);
-                      setLoadingInit(true);
-                      setMensaje2("");
-                    }}
-                    style={{
-                      padding: "12px 28px",
-                      borderRadius: 12,
-                      border: "none",
-                      background: "#0f7cc0",
-                      color: "#fff",
-                      fontWeight: 700,
-                      fontSize: 15,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Volver a intentar
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div
-                    style={{
-                      width: 72,
-                      height: 72,
-                      borderRadius: "50%",
-                      border: "6px solid #e5e7eb",
-                      borderTop: "6px solid #0f7cc0",
-                      animation: "spin 0.9s linear infinite",
-                      margin: "0 auto 24px",
-                    }}
-                  />
-                  <p style={{ color: "#374151", fontSize: 15, fontWeight: 600, margin: 0 }}>{mensaje2 || "Cargando..."}</p>
-                </>
-              )}
-            </div>
-          ) : (
-            <div style={{ textAlign: "center", maxWidth: 340 }}>
-              <img src="./images/found.gif" style={{ width: 160, marginBottom: 20 }} alt="" />
-              <div style={{ background: "#fee2e2", borderRadius: 16, padding: "16px 20px" }}>
-                <p style={{ color: "#991b1b", fontWeight: 700, fontSize: 15, margin: "0 0 8px" }}>Rostro no reconocido</p>
-                <p style={{ color: "#7f1d1d", fontSize: 13, margin: 0 }}>{mensaje2}</p>
-              </div>
-              {contador > 0 && (
-                <p style={{ marginTop: 16, color: "#6b7280", fontSize: 13 }}>
-                  Reintentando en <strong>{contador}s</strong>...
+        <main className="sg-cuerpo">
+          <section className="sg-panel sg-estado" aria-live="polite">
+            {!rostroCoincide ? (
+              <>
+                <div className="sg-estado-ico sg-peligro">
+                  <ScanFace size={34} aria-hidden="true" />
+                </div>
+                <h1 className="sg-titulo">Rostro no reconocido</h1>
+                <p className="sg-sub">{sinEmoji(mensaje2)}</p>
+                {/* el reintento ocurre a los 5 s (setTimeout en validarPersona) */}
+                <div className="sg-barra sg-temporizada" style={{ "--dur": "5s" }}>
+                  <span />
+                </div>
+                <p className="sg-nota" style={{ marginTop: 10 }}>
+                  Preparando un nuevo intento…
                 </p>
-              )}
-            </div>
-          )}
-        </div>
+              </>
+            ) : mensaje2?.startsWith("ERROR:") ? (
+              <>
+                <div className="sg-estado-ico sg-alerta">
+                  <TriangleAlert size={32} aria-hidden="true" />
+                </div>
+                <h1 className="sg-titulo">No pudimos continuar</h1>
+                <p className="sg-sub">{mensaje2.replace("ERROR: ", "")}</p>
+                <button type="button" className="sg-boton" onClick={volverAlInicio}>
+                  <RotateCcw size={17} aria-hidden="true" /> Volver a intentar
+                </button>
+              </>
+            ) : mensaje2?.startsWith("Registro exitoso") ? (
+              <>
+                <div className="sg-estado-ico sg-info">
+                  <BadgeCheck size={34} aria-hidden="true" />
+                </div>
+                <h1 className="sg-titulo">Registro guardado</h1>
+                <p className="sg-sub">{mensaje2}</p>
+              </>
+            ) : (
+              <>
+                <div className="sg-estado-ico sg-info sg-cargando">
+                  <Fingerprint size={32} aria-hidden="true" />
+                </div>
+                <h1 className="sg-titulo">Un momento</h1>
+                <p className="sg-sub">{sinEmoji(mensaje2) || "Cargando…"}</p>
+              </>
+            )}
+          </section>
+        </main>
       )}
 
       {/* ── CÁMARA ACTIVA ───────────────────────────────────────────────── */}
       {iniciarProceso && !loadingInit && (
-        <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#f0f4f8" }}>
-          {/* Header con fecha/lugar/jornada */}
-          <div style={{ background: "linear-gradient(135deg,#0f7cc0,#1a9fd4)", padding: "14px 20px 18px", color: "#fff" }}>
-            <div style={{ maxWidth: 480, margin: "0 auto" }}>
-              {/* Fila superior: fecha y hora */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                <div>
-                  <p style={{ margin: 0, fontSize: 11, opacity: 0.8, textTransform: "uppercase", letterSpacing: 0.5 }}>{fechaActual}</p>
-                  <p style={{ margin: "2px 0 0", fontSize: 24, fontWeight: 800 }}>{horaActual}</p>
-                </div>
-                <div style={{ textAlign: "right" }}>
-                  <p style={{ margin: 0, fontSize: 11, opacity: 0.8 }}>LUGAR DE TRABAJO</p>
-                  <p style={{ margin: "2px 0 0", fontSize: 13, fontWeight: 700, maxWidth: 180 }}>{direccion || "—"}</p>
-                </div>
+        <main className="sg-cuerpo">
+          <section className="sg-panel sg-panel-compacto">
+            <div className="sg-info">
+              <div className="sg-dato">
+                <span className="sg-dato-ico">
+                  <Building2 size={17} aria-hidden="true" />
+                </span>
+                <span>
+                  <small>Lugar de trabajo</small>
+                  <strong>{direccion || "—"}</strong>
+                </span>
               </div>
-              {/* Fila inferior: inicio de jornada */}
-              {jornadaHora && (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.15)", borderRadius: 10, padding: "7px 12px" }}>
-                  <Clock size={16} color="#fff" />
-                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>
-                    Inicio de jornada: <strong>{jornadaHora}</strong>
-                  </p>
-                </div>
-              )}
+              <div className="sg-dato">
+                <span className="sg-dato-ico">
+                  <Clock size={17} aria-hidden="true" />
+                </span>
+                <span>
+                  <small>Inicio de jornada</small>
+                  <strong>{jornadaHora || "—"}</strong>
+                </span>
+              </div>
             </div>
-          </div>
+          </section>
 
-          {/* Cuerpo */}
-          <div style={{ flex: 1, maxWidth: 480, margin: "0 auto", width: "100%", padding: "16px 16px 32px" }}>
-            {/* Contador — encima del video */}
+          <section className="sg-panel sg-panel-compacto">
             {contador > 0 && (
-              <div style={{ marginBottom: 10 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-                  <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 600 }}>Tiempo restante</span>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: contador <= 3 ? "#ef4444" : "#0f7cc0" }}>{contador}s</span>
+              <div className={`sg-tiempo${contador <= 3 ? " sg-urgente" : ""}`}>
+                <div className="sg-tiempo-fila">
+                  <span>Tiempo para el gesto</span>
+                  <span className="sg-tiempo-seg">{contador}s</span>
                 </div>
-                <div style={{ background: "#e5e7eb", borderRadius: 99, height: 8, overflow: "hidden" }}>
-                  <div
-                    style={{
-                      height: "100%",
-                      borderRadius: 99,
-                      transition: "width 0.8s ease",
-                      background: contador <= 3 ? "linear-gradient(90deg,#ef4444,#f97316)" : "linear-gradient(90deg,#0f7cc0,#00e5ff)",
-                      width: `${(contador / 10) * 100}%`,
-                    }}
-                  />
+                <div className={`sg-barra${contador <= 3 ? " sg-urgente" : ""}`}>
+                  <span style={{ width: `${(contador / 10) * 100}%` }} />
                 </div>
               </div>
             )}
 
-            {/* Video */}
-            <div
-              style={{
-                position: "relative",
-                borderRadius: 20,
-                overflow: "hidden",
-                background: "#000",
-                boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
-                marginBottom: 16,
-                aspectRatio: "4/3",
-              }}
-            >
-              <video ref={videoRef} autoPlay muted style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-              <canvas ref={canvasRef} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", borderRadius: 20 }} />
+            <div className="sg-video">
+              <video ref={videoRef} autoPlay muted playsInline />
+              <canvas ref={canvasRef} />
               {!modelosCargados && (
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    background: "rgba(0,0,0,0.5)",
-                    borderRadius: 20,
-                    gap: 14,
-                    zIndex: 5,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 44,
-                      height: 44,
-                      border: "4px solid rgba(255,255,255,0.25)",
-                      borderTop: "4px solid #fff",
-                      borderRadius: "50%",
-                      animation: "spin 0.9s linear infinite",
-                    }}
-                  />
-                  <p style={{ color: "#fff", fontSize: 14, fontWeight: 600, margin: 0, textAlign: "center", padding: "0 20px" }}>
-                    Preparando reconocimiento facial...
-                  </p>
+                <div className="sg-video-cargando">
+                  <div className="sg-giro" />
+                  Preparando reconocimiento facial…
                 </div>
               )}
               {procesando && (
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    background: "rgba(0,0,0,0.72)",
-                    borderRadius: 20,
-                    gap: 16,
-                    zIndex: 10,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 56,
-                      height: 56,
-                      border: "5px solid rgba(255,255,255,0.2)",
-                      borderTop: "5px solid #00e5ff",
-                      borderRadius: "50%",
-                      animation: "spin 0.8s linear infinite",
-                    }}
-                  />
-                  <div style={{ textAlign: "center", padding: "0 24px" }}>
-                    <p style={{ color: "#fff", fontSize: 16, fontWeight: 700, margin: "0 0 4px" }}>Gesto detectado ✓</p>
-                    <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, margin: 0 }}>Verificando identidad...</p>
-                  </div>
+                <div className="sg-video-cargando" style={{ zIndex: 10 }}>
+                  <div className="sg-giro" />
+                  <span>
+                    Gesto detectado ✓
+                    <small style={{ display: "block", marginTop: 4, fontWeight: 400, opacity: 0.75 }}>Verificando identidad…</small>
+                  </span>
                 </div>
               )}
             </div>
 
-            {/* Zona de trabajo */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "11px 14px",
-                borderRadius: 14,
-                background: estaDentroArea ? "#d1fae5" : "#fee2e2",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-                marginBottom: 10,
-              }}
-            >
-              <MapPin size={20} color={estaDentroArea ? "#065f46" : "#991b1b"} />
-              <div style={{ flex: 1 }}>
-                <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: estaDentroArea ? "#065f46" : "#991b1b" }}>
-                  {estaDentroArea ? "Dentro de tu zona de trabajo" : "Fuera de tu zona de trabajo"}
-                </p>
-                {direccionActual && (
-                  <p style={{ margin: "2px 0 0", fontSize: 11, color: estaDentroArea ? "#047857" : "#b91c1c", lineHeight: 1.3 }}>{direccionActual}</p>
-                )}
+            <div className={`sg-zona ${estaDentroArea ? "sg-dentro" : "sg-fuera"}`}>
+              <MapPin size={18} aria-hidden="true" style={{ flex: "none", marginTop: 1 }} />
+              <span>
+                <strong>{estaDentroArea ? "Dentro de tu zona de trabajo" : "Fuera de tu zona de trabajo"}</strong>
+                {direccionActual && <small>{direccionActual}</small>}
+              </span>
+            </div>
+          </section>
+
+          <section className="sg-panel sg-panel-compacto" aria-live="polite">
+            {!rostroPresente ? (
+              <div className="sg-paso">
+                <span className="sg-paso-ico sg-neutro">
+                  <Crosshair size={22} aria-hidden="true" />
+                </span>
+                <span className="sg-paso-txt">
+                  <strong>Ubícate frente a la cámara</strong>
+                  <small>Centra tu rostro dentro del óvalo.</small>
+                </span>
               </div>
-            </div>
-
-            {/* Reto */}
-            <div style={{ background: "#fff", borderRadius: 20, padding: "18px 16px", boxShadow: "0 4px 16px rgba(0,0,0,0.07)" }}>
-              {!rostroPresente ? (
-                <div style={{ textAlign: "center", padding: "10px 0" }}>
-                  <p style={{ margin: 0, fontSize: 15, color: "#6b7280", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                    <Crosshair size={18} color="#9ca3af" /> Ubícate frente a la cámara
-                  </p>
+            ) : !movimientoConfirmado && !reto ? (
+              <>
+                <div className="sg-paso">
+                  <span className="sg-paso-ico">
+                    <ScanFace size={24} className="sg-anima-cabeza" aria-hidden="true" />
+                  </span>
+                  <span className="sg-paso-txt">
+                    <strong>Mueve ligeramente la cabeza</strong>
+                    <small>Así confirmamos que eres una persona real.</small>
+                  </span>
                 </div>
-              ) : !movimientoConfirmado && !reto ? (
-                <div style={{ textAlign: "center", padding: "8px 0" }}>
-                  <div style={{ fontSize: 36, animation: "headTurnLeft 1.2s ease-in-out infinite alternate", display: "inline-block", marginBottom: 8 }}>
-                    🙂
-                  </div>
-                  <p style={{ margin: "0 0 6px", fontSize: 15, fontWeight: 700, color: "#374151" }}>Mueve ligeramente la cabeza</p>
-                  <p style={{ margin: 0, fontSize: 12, color: "#9ca3af" }}>Confirma que eres una persona real</p>
-                </div>
-              ) : reto ? (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-                  <p style={{ margin: 0, fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.8 }}>
-                    Realiza el siguiente gesto
+                {mensaje && (
+                  <p className="sg-aviso">
+                    <Timer size={15} aria-hidden="true" /> {sinEmoji(mensaje)}
                   </p>
-                  <div
-                    style={{
-                      background: "linear-gradient(135deg,#0f7cc0,#1a9fd4)",
-                      borderRadius: 16,
-                      padding: "18px 24px",
-                      textAlign: "center",
-                      width: "100%",
-                      boxSizing: "border-box",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-                      {reto === "Mover la cabeza" ? <ArrowLeftRight size={28} color="#fff" /> : <Smile size={28} color="#fff" />}
-                      <span style={{ fontSize: 20, fontWeight: 800, color: "#fff" }}>
-                        {reto === "Mover la cabeza" ? "Mover lentamente la cabeza de un lado a otro" : "Sonríe a la cámara"}
-                      </span>
-                    </div>
-                  </div>
-                  {/* Ejemplo visual del reto */}
-                  <div style={{ width: "100%", boxSizing: "border-box" }}>
+                )}
+              </>
+            ) : reto && !validando ? (
+              // Gesto cumplido: el video sigue a la vista mientras se verifica.
+              <div className="sg-paso">
+                <span className="sg-paso-ico sg-ok">
+                  <CircleCheck size={24} aria-hidden="true" />
+                </span>
+                <span className="sg-paso-txt">
+                  <strong>Gesto detectado</strong>
+                  <small>Verificando tu identidad…</small>
+                </span>
+              </div>
+            ) : reto ? (
+              <>
+                <div className="sg-paso">
+                  <span className="sg-paso-ico">
                     {reto === "Mover la cabeza" ? (
-                      <div style={{ background: "#eff6ff", borderRadius: 12, padding: "12px 14px", border: "1px solid #bfdbfe" }}>
-                        <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "#1d4ed8", textTransform: "uppercase", letterSpacing: 0.6 }}>
-                          ¿Cómo hacerlo?
-                        </p>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                            <div
-                              style={{
-                                fontSize: 28,
-                                animation: "headTurnLeft 1.5s ease-in-out infinite alternate",
-                                display: "inline-block",
-                              }}
-                            >
-                              😐
-                            </div>
-                            <span style={{ fontSize: 9, color: "#6b7280", fontWeight: 600 }}>IZQUIERDA</span>
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, opacity: 0.4 }}>
-                            <ArrowLeftRight size={20} color="#3b82f6" />
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                            <div
-                              style={{
-                                fontSize: 28,
-                                animation: "headTurnRight 1.5s ease-in-out infinite alternate",
-                                display: "inline-block",
-                              }}
-                            >
-                              😐
-                            </div>
-                            <span style={{ fontSize: 9, color: "#6b7280", fontWeight: 600 }}>DERECHA</span>
-                          </div>
-                        </div>
-                        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#dbeafe", borderRadius: 8, padding: "5px 8px" }}>
-                            <span style={{ fontSize: 14 }}>1️⃣</span>
-                            <span style={{ fontSize: 11, color: "#1e40af" }}>
-                              Mira hacia tu <strong>izquierda</strong> lentamente
-                            </span>
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#dbeafe", borderRadius: 8, padding: "5px 8px" }}>
-                            <span style={{ fontSize: 14 }}>2️⃣</span>
-                            <span style={{ fontSize: 11, color: "#1e40af" }}>
-                              Luego mira hacia tu <strong>derecha</strong> lentamente
-                            </span>
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#dbeafe", borderRadius: 8, padding: "5px 8px" }}>
-                            <span style={{ fontSize: 14 }}>💡</span>
-                            <span style={{ fontSize: 11, color: "#1e40af" }}>Mantén tu rostro visible frente a la cámara</span>
-                          </div>
-                        </div>
-                      </div>
+                      <ArrowLeftRight size={24} className="sg-anima-cabeza" aria-hidden="true" />
                     ) : (
-                      <div style={{ background: "#f0fdf4", borderRadius: 12, padding: "12px 14px", border: "1px solid #bbf7d0" }}>
-                        <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "#15803d", textTransform: "uppercase", letterSpacing: 0.6 }}>
-                          ¿Cómo hacerlo?
-                        </p>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                            <span style={{ fontSize: 28 }}>😐</span>
-                            <span style={{ fontSize: 9, color: "#6b7280", fontWeight: 600 }}>NEUTRO</span>
-                          </div>
-                          <span style={{ fontSize: 18, color: "#16a34a" }}>→</span>
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                            <span
-                              style={{
-                                fontSize: 28,
-                                animation: "smilePulse 1.2s ease-in-out infinite alternate",
-                                display: "inline-block",
-                              }}
-                            >
-                              😁
-                            </span>
-                            <span style={{ fontSize: 9, color: "#6b7280", fontWeight: 600 }}>SONRÍE</span>
-                          </div>
-                        </div>
-                        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#dcfce7", borderRadius: 8, padding: "5px 8px" }}>
-                            <span style={{ fontSize: 14 }}>1️⃣</span>
-                            <span style={{ fontSize: 11, color: "#166534" }}>Mira directo a la cámara</span>
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#dcfce7", borderRadius: 8, padding: "5px 8px" }}>
-                            <span style={{ fontSize: 14 }}>2️⃣</span>
-                            <span style={{ fontSize: 11, color: "#166534" }}>
-                              Haz una <strong>sonrisa amplia</strong> y natural
-                            </span>
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#dcfce7", borderRadius: 8, padding: "5px 8px" }}>
-                            <span style={{ fontSize: 14 }}>💡</span>
-                            <span style={{ fontSize: 11, color: "#166534" }}>Mantén la sonrisa por 1-2 segundos</span>
-                          </div>
-                        </div>
-                      </div>
+                      <Smile size={24} className="sg-anima-latido" aria-hidden="true" />
                     )}
-                  </div>
-
-                  {mensaje && (
-                    <div style={{ background: "#d1fae5", borderRadius: 10, padding: "9px 14px", width: "100%", boxSizing: "border-box" }}>
-                      <p style={{ margin: 0, color: "#065f46", fontWeight: 700, fontSize: 13, textAlign: "center" }}>{mensaje}</p>
-                    </div>
-                  )}
+                  </span>
+                  <span className="sg-paso-txt">
+                    <small className="sg-ceja">Gesto solicitado</small>
+                    <strong>{PASOS_RETO[reto]?.titulo || reto}</strong>
+                  </span>
                 </div>
-              ) : (
-                <div style={{ textAlign: "center", padding: "10px 0" }}>
-                  <p style={{ margin: 0, fontSize: 14, color: "#0f7cc0", fontWeight: 600 }}>Rostro detectado, preparando reto...</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+                {PASOS_RETO[reto] && (
+                  <ol className="sg-pasos">
+                    {PASOS_RETO[reto].pasos.map((paso, i) => (
+                      <li key={paso}>
+                        <span className="sg-pasos-num">{i + 1}</span>
+                        {paso}
+                      </li>
+                    ))}
+                    <li className="sg-consejo">
+                      <span className="sg-pasos-num">
+                        <Lightbulb size={12} aria-hidden="true" />
+                      </span>
+                      {PASOS_RETO[reto].consejo}
+                    </li>
+                  </ol>
+                )}
+                {mensaje && (
+                  <p className="sg-aviso">
+                    <Timer size={15} aria-hidden="true" /> {sinEmoji(mensaje)}
+                  </p>
+                )}
+              </>
+            ) : (
+              <div className="sg-paso">
+                <span className="sg-paso-ico">
+                  <Sparkles size={22} className="sg-anima-latido" aria-hidden="true" />
+                </span>
+                <span className="sg-paso-txt">
+                  <strong>Rostro detectado</strong>
+                  <small>Preparando tu gesto…</small>
+                </span>
+              </div>
+            )}
+          </section>
+        </main>
       )}
+
+      <Pie />
     </div>
   );
 }

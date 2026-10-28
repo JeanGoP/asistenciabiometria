@@ -4,13 +4,40 @@ import { useRouter } from 'next/navigation';
 import * as faceapi from 'face-api.js';
 import { cargarModelos } from '@/lib/faceModels';
 import { useAppContext } from '@/context/AppContext';
-import { Lightbulb, Glasses, Crosshair, Contrast, Smartphone, CheckCircle2, Smile, ArrowLeftRight, TriangleAlert, User } from 'lucide-react';
+import { Cabecera, Pie } from '@/components/marca';
+import {
+  Camera,
+  CircleCheck,
+  Contrast,
+  Crosshair,
+  Glasses,
+  IdCard,
+  Lightbulb,
+  LoaderCircle,
+  MoveHorizontal,
+  ScanFace,
+  Smartphone,
+  TriangleAlert,
+  UserRound,
+} from 'lucide-react';
+
+const CONSEJOS = [
+  [Lightbulb, 'Busca un lugar bien iluminado'],
+  [Glasses, 'Retira gafas o tapabocas si los usas'],
+  [Crosshair, 'Mantén tu rostro centrado en la cámara'],
+  [Contrast, 'Evita fondos muy oscuros o muy brillantes'],
+  [Smartphone, 'Mantente quieto durante el registro'],
+];
+
+// Algunos mensajes traen un emoji al inicio ("📡 …"); se muestran sin él.
+const sinEmoji = (texto = '') => texto.replace(/^[^\p{L}\p{N}¡¿]+/u, '');
 
 export default function RegistrarUsuario() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const isDetectingRef = useRef(false);
   const contadorActivoRef = useRef(false);
+  const streamRef = useRef(null);
   const { usuario } = useAppContext();
   const router = useRouter();
 
@@ -19,6 +46,8 @@ export default function RegistrarUsuario() {
   const [mensaje, setMensaje] = useState('');
   const [contador, setContador] = useState(0);
   const [registrado, setRegistrado] = useState(false);
+  // Antes se mostraba "¡Registro exitoso!" aunque el servidor respondiera con error.
+  const [registroOk, setRegistroOk] = useState(true);
   const [mostrarCamara, setMostrarCamara] = useState(false);
   const [registrando, setRegistrando] = useState(false);
   const [distanciaOk, setDistanciaOk] = useState(false);
@@ -26,6 +55,10 @@ export default function RegistrarUsuario() {
   const id_usuario = usuario;
 
   // ── Dibujo canvas ──────────────────────────────────────────────────────────
+  // Paleta de Síntesis Gestión y sin shadowBlur (de lo más costoso del canvas
+  // en celulares), igual que la superposición de la pantalla de marcaje.
+
+  const fuenteCanvas = (px) => `700 ${px}px ${getComputedStyle(document.body).fontFamily}`;
 
   const dibujarGuiaRostro = (ctx, cw, ch) => {
     const cx = cw / 2;
@@ -33,36 +66,27 @@ export default function RegistrarUsuario() {
     const rx = cw * 0.22;
     const ry = ch * 0.32;
 
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
-    ctx.fillRect(0, 0, cw, ch);
-
-    ctx.save();
+    // Velo azul marino con el óvalo "perforado" (regla evenodd).
+    ctx.fillStyle = 'rgba(0, 38, 66, 0.45)';
     ctx.beginPath();
+    ctx.rect(0, 0, cw, ch);
     ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.clearRect(0, 0, cw, ch);
-    ctx.restore();
+    ctx.fill('evenodd');
 
     ctx.save();
     ctx.setLineDash([12, 8]);
     ctx.lineDashOffset = -(Date.now() / 60) % 20;
     ctx.strokeStyle = 'rgba(255,255,255,0.85)';
     ctx.lineWidth = 2.5;
-    ctx.shadowColor = '#fff';
-    ctx.shadowBlur = 8;
     ctx.beginPath();
     ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
 
-    ctx.save();
     ctx.fillStyle = 'rgba(255,255,255,0.95)';
-    ctx.font = `bold ${Math.round(cw * 0.038)}px sans-serif`;
+    ctx.font = fuenteCanvas(Math.round(cw * 0.038));
     ctx.textAlign = 'center';
-    ctx.shadowColor = 'rgba(0,0,0,0.6)';
-    ctx.shadowBlur = 6;
     ctx.fillText('Ubica tu rostro aquí', cx, cy + ry + ch * 0.07);
-    ctx.restore();
   };
 
   const dibujarFeedbackDistancia = (ctx, box, cw, ch) => {
@@ -79,17 +103,16 @@ export default function RegistrarUsuario() {
     const label = `${flecha}  ${texto}  ${flecha}`;
 
     ctx.save();
-    ctx.font = `bold ${fontSize}px sans-serif`;
+    ctx.font = fuenteCanvas(fontSize);
     ctx.textAlign = 'center';
     const pw = ctx.measureText(label).width + 24;
     const ph = fontSize + 14;
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillStyle = 'rgba(0, 38, 66, 0.7)';
     ctx.beginPath();
-    ctx.roundRect(cw / 2 - pw / 2, py - ph + 4, pw, ph, 8);
+    if (ctx.roundRect) ctx.roundRect(cw / 2 - pw / 2, py - ph + 4, pw, ph, 8);
+    else ctx.rect(cw / 2 - pw / 2, py - ph + 4, pw, ph);
     ctx.fill();
     ctx.fillStyle = color;
-    ctx.shadowColor = 'rgba(0,0,0,0.8)';
-    ctx.shadowBlur = 6;
     ctx.fillText(label, cw / 2, py);
     ctx.restore();
   };
@@ -98,15 +121,13 @@ export default function RegistrarUsuario() {
     const { x, y, width, height } = box;
     const cornerLen = Math.min(width, height) * 0.22;
     const color =
-      estado === 'registrando' ? '#00e676' :
-      estado === 'listo'       ? '#ffeb3b' :
-      '#00e5ff';
+      estado === 'registrando' ? '#4ADE80' :
+      estado === 'listo'       ? '#F5B041' :
+      '#5AB4F5';
 
     ctx.lineWidth = 3;
     ctx.lineCap = 'round';
     ctx.strokeStyle = color;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 12;
 
     [
       [[x, y + cornerLen], [x, y], [x + cornerLen, y]],
@@ -120,8 +141,6 @@ export default function RegistrarUsuario() {
       ctx.lineTo(...e);
       ctx.stroke();
     });
-
-    ctx.shadowBlur = 0;
   };
 
   // ── Cámara y modelos ────────────────────────────────────────────────────────
@@ -135,9 +154,26 @@ export default function RegistrarUsuario() {
       }),
       cargarModelos(),
     ]);
-    if (videoRef.current) videoRef.current.srcObject = stream;
+    streamRef.current = stream;
+    asignarStreamAlVideo(stream);
     setModelosCargados(true);
   }
+
+  // Asigna el stream al <video> reintentando por rAF (mismo arreglo que la
+  // pantalla de marcaje): si getUserMedia resolvía antes de que React montara
+  // el <video>, el viejo `if (videoRef.current)` descartaba el stream y la
+  // cámara quedaba encendida pero sin imagen.
+  const asignarStreamAlVideo = (stream, intentos = 0) => {
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+    } else if (intentos < 120) {
+      requestAnimationFrame(() => asignarStreamAlVideo(stream, intentos + 1));
+    }
+  };
+
+  // Antes la cámara nunca se apagaba al salir de esta página (el indicador
+  // seguía encendido tras el registro).
+  useEffect(() => () => streamRef.current?.getTracks().forEach((t) => t.stop()), []);
 
   const obtenerDeteccionRapida = async () => {
     if (!videoRef.current) return null;
@@ -207,6 +243,7 @@ export default function RegistrarUsuario() {
     });
     const data = await res.json();
     setMensaje(data.mensaje);
+    setRegistroOk(!!data.ok);
     setRegistrado(true);
   };
 
@@ -290,139 +327,142 @@ export default function RegistrarUsuario() {
 
   // ── UI ──────────────────────────────────────────────────────────────────────
 
+  const estado = mensaje
+    ? { titulo: sinEmoji(mensaje), detalle: registrando ? 'No muevas la cámara.' : '' }
+    : !modelosCargados
+      ? { titulo: 'Preparando la cámara', detalle: 'Cargando el reconocimiento facial…' }
+      : !rostroPresente
+        ? { titulo: 'Ubícate frente a la cámara', detalle: 'El registro empieza solo cuando tu rostro esté en posición.' }
+        : !distanciaOk
+          ? { titulo: 'Ajusta tu distancia', detalle: 'Acércate o aléjate hasta quedar dentro del recuadro.' }
+          : { titulo: 'Mantente quieto', detalle: 'Iniciando la cuenta regresiva…' };
+
   return (
-    <div style={{ backgroundColor: '#f0f4f8', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px 16px' }}>
+    <div className="sg-app">
+      <Cabecera modulo="Registro biométrico" />
 
-      {/* Encabezado */}
-      <div style={{ width: '100%', maxWidth: 480, marginBottom: 20 }}>
-        <h2 style={{ color: '#0f7cc0', margin: 0, fontSize: 22 }}>Registro Biométrico</h2>
-        <p style={{ color: '#6b7280', margin: '4px 0 0', fontSize: 13 }}>
-          Cédula: <strong style={{ color: '#111827' }}>{id_usuario}</strong>
-        </p>
-      </div>
-
-      {registrado ? (
-        /* ── Estado: registrado ── */
-        <div style={{
-          width: '100%', maxWidth: 480,
-          background: 'linear-gradient(135deg,#d1fae5,#a7f3d0)',
-          borderRadius: 16, padding: '40px 24px', textAlign: 'center',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
-        }}>
-          <CheckCircle2 size={56} color="#059669" style={{ marginBottom: 8 }} />
-          <h2 style={{ color: '#065f46', margin: '12px 0 8px' }}>¡Registro exitoso!</h2>
-          <p style={{ color: '#047857', margin: 0 }}>Redirigiendo al inicio en unos segundos...</p>
-        </div>
-      ) : !mostrarCamara ? (
-        /* ── Estado: instrucciones ── */
-        <div style={{
-          width: '100%', maxWidth: 480,
-          background: '#fff', borderRadius: 16, padding: '28px 24px',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-        }}>
-          <h3 style={{ color: '#374151', margin: '0 0 16px' }}>Antes de continuar, ten en cuenta:</h3>
-          <ul style={{ padding: '0 0 0 4px', listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 12, margin: 0 }}>
-            {[
-              [<Lightbulb size={20} color="#d97706" />, 'Busca un lugar bien iluminado'],
-              [<Glasses size={20} color="#6b7280" />, 'Retira gafas o mascarilla si usas'],
-              [<Crosshair size={20} color="#0f7cc0" />, 'Mantén tu rostro centrado en la cámara'],
-              [<Contrast size={20} color="#7c3aed" />, 'Evita fondos muy oscuros o brillantes'],
-              [<Smartphone size={20} color="#059669" />, 'Mantente quieto durante el registro'],
-            ].map(([icon, text]) => (
-              <li key={text} style={{ display: 'flex', alignItems: 'center', gap: 12, color: '#4b5563', fontSize: 14 }}>
-                {icon} {text}
-              </li>
-            ))}
-          </ul>
-          <div style={{ marginTop: 20, background: '#eff6ff', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <User size={16} color="#1d4ed8" />
-            <p style={{ color: '#1d4ed8', margin: 0, fontSize: 13, fontWeight: 600 }}>
-              La cámara se activará en 3 segundos automáticamente
-            </p>
-          </div>
-        </div>
-      ) : (
-        /* ── Estado: cámara activa ── */
-        <div style={{ width: '100%', maxWidth: 480, display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-          {/* Video + canvas */}
-          <div style={{ position: 'relative', width: '100%', borderRadius: 20, overflow: 'hidden', background: '#000', boxShadow: '0 8px 24px rgba(0,0,0,0.2)', aspectRatio: '4/3' }}>
-            <video
-              ref={videoRef}
-              autoPlay
-              muted
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', borderRadius: 20 }}
-            />
-            <canvas
-              ref={canvasRef}
-              style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', borderRadius: 20 }}
-            />
-          </div>
-
-          {/* Panel de estado */}
-          <div style={{
-            background: '#fff', borderRadius: 16, padding: '20px',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.07)',
-            display: 'flex', flexDirection: 'column', gap: 12,
-          }}>
-
-            {/* Indicador de rostro */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '10px 14px', borderRadius: 10,
-              background: rostroPresente ? '#d1fae5' : '#fee2e2',
-            }}>
-              {rostroPresente ? <Smile size={20} color="#065f46" /> : <User size={20} color="#991b1b" />}
-              <span style={{ fontWeight: 600, fontSize: 14, color: rostroPresente ? '#065f46' : '#991b1b' }}>
-                {rostroPresente ? 'Rostro detectado' : 'No se detecta rostro'}
-              </span>
+      <main className="sg-cuerpo">
+        {registrado ? (
+          /* ── Estado: registrado ── */
+          <section className="sg-panel sg-estado" aria-live="polite">
+            {registroOk ? (
+              <>
+                <div className="sg-estado-ico sg-ok">
+                  <CircleCheck size={36} aria-hidden="true" />
+                </div>
+                <h1 className="sg-titulo">Registro completado</h1>
+                <p className="sg-sub">Tu rostro quedó registrado. Ya puedes marcar tu asistencia con reconocimiento facial.</p>
+              </>
+            ) : (
+              <>
+                <div className="sg-estado-ico sg-alerta">
+                  <TriangleAlert size={32} aria-hidden="true" />
+                </div>
+                <h1 className="sg-titulo">No pudimos guardar el registro</h1>
+                <p className="sg-sub">{sinEmoji(mensaje) || 'Intenta de nuevo en unos minutos.'}</p>
+              </>
+            )}
+            <div className="sg-barra sg-temporizada" style={{ '--dur': '4s' }}>
+              <span />
             </div>
+            <p className="sg-nota" style={{ marginTop: 10 }}>
+              Te llevaremos al inicio en unos segundos…
+            </p>
+          </section>
+        ) : !mostrarCamara ? (
+          /* ── Estado: instrucciones ── */
+          <section className="sg-panel">
+            <h1 className="sg-titulo">Registro biométrico</h1>
+            <p className="sg-sub">Vamos a registrar tu rostro para tus próximos marcajes.</p>
+            <span className="sg-chip">
+              <IdCard size={14} aria-hidden="true" /> Cédula {id_usuario}
+            </span>
 
-            {/* Indicador de distancia */}
-            {rostroPresente && (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '10px 14px', borderRadius: 10,
-                background: distanciaOk ? '#dbeafe' : '#fef3c7',
-              }}>
-                {distanciaOk ? <CheckCircle2 size={20} color="#1e40af" /> : <ArrowLeftRight size={20} color="#92400e" />}
-                <span style={{ fontWeight: 600, fontSize: 14, color: distanciaOk ? '#1e40af' : '#92400e' }}>
-                  {distanciaOk ? 'Posición correcta' : 'Ajusta tu distancia a la cámara'}
+            <ul className="sg-consejos">
+              {CONSEJOS.map(([Icono, texto], i) => (
+                <li key={texto} style={{ '--i': i }}>
+                  <span className="sg-dato-ico">
+                    <Icono size={18} aria-hidden="true" />
+                  </span>
+                  {texto}
+                </li>
+              ))}
+            </ul>
+
+            {/* la cámara se activa a los 3 s (useEffect de inicio automático) */}
+            <div className="sg-barra sg-temporizada" style={{ '--dur': '3s', marginTop: 22 }}>
+              <span />
+            </div>
+            <p className="sg-nota" style={{ marginTop: 10 }}>
+              <Camera size={15} aria-hidden="true" /> La cámara se activará en unos segundos.
+            </p>
+          </section>
+        ) : (
+          /* ── Estado: cámara activa ── */
+          <>
+            <section className="sg-panel sg-panel-compacto">
+              <div className="sg-paso" style={{ marginBottom: 12 }}>
+                <span className="sg-paso-ico">
+                  <ScanFace size={24} aria-hidden="true" />
+                </span>
+                <span className="sg-paso-txt">
+                  <strong>Registro biométrico</strong>
+                  <small>Cédula {id_usuario}</small>
                 </span>
               </div>
-            )}
 
-            {/* Barra de cuenta regresiva */}
-            {contador > 0 && (
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <span style={{ fontSize: 13, color: '#374151', fontWeight: 600 }}>Registrando en...</span>
-                  <span style={{ fontSize: 13, color: '#0f7cc0', fontWeight: 700 }}>{contador}s</span>
+              <div className="sg-video">
+                <video ref={videoRef} autoPlay muted playsInline />
+                <canvas ref={canvasRef} />
+              </div>
+
+              <div className="sg-indicadores">
+                <div className={`sg-indicador${rostroPresente ? ' sg-ok' : ''}`}>
+                  {rostroPresente ? <CircleCheck size={16} aria-hidden="true" /> : <UserRound size={16} aria-hidden="true" />}
+                  {rostroPresente ? 'Rostro detectado' : 'Sin rostro'}
                 </div>
-                <div style={{ background: '#e5e7eb', borderRadius: 99, height: 8, overflow: 'hidden' }}>
-                  <div style={{
-                    height: '100%', borderRadius: 99,
-                    background: 'linear-gradient(90deg,#0f7cc0,#00e5ff)',
-                    width: `${((5 - contador) / 5) * 100}%`,
-                    transition: 'width 0.8s ease',
-                  }} />
+                <div className={`sg-indicador${!rostroPresente ? '' : distanciaOk ? ' sg-ok' : ' sg-alerta'}`}>
+                  {rostroPresente && distanciaOk ? <CircleCheck size={16} aria-hidden="true" /> : <MoveHorizontal size={16} aria-hidden="true" />}
+                  {!rostroPresente ? 'Posición pendiente' : distanciaOk ? 'Posición correcta' : 'Ajusta la distancia'}
                 </div>
               </div>
-            )}
+            </section>
 
-            {/* Mensaje de estado */}
-            {mensaje ? (
-              <p style={{ margin: 0, fontSize: 13, color: '#6b7280', textAlign: 'center' }}>{mensaje}</p>
-            ) : !modelosCargados ? (
-              <p style={{ margin: 0, fontSize: 13, color: '#6b7280', textAlign: 'center' }}>Cargando modelos de detección...</p>
-            ) : !rostroPresente ? (
-              <p style={{ margin: 0, fontSize: 13, color: '#6b7280', textAlign: 'center' }}>Ubícate frente a la cámara y espera 5 segundos</p>
-            ) : distanciaOk && contador === 0 ? (
-              <p style={{ margin: 0, fontSize: 13, color: '#6b7280', textAlign: 'center' }}>Mantente quieto, iniciando cuenta regresiva...</p>
-            ) : null}
-          </div>
-        </div>
-      )}
+            <section className="sg-panel sg-panel-compacto" aria-live="polite">
+              {contador > 0 ? (
+                <div className="sg-tiempo" style={{ marginBottom: 0 }}>
+                  <div className="sg-tiempo-fila">
+                    <span>Registrando en</span>
+                    <span className="sg-tiempo-seg">{contador}s</span>
+                  </div>
+                  <div className="sg-barra">
+                    <span style={{ width: `${((5 - contador) / 5) * 100}%` }} />
+                  </div>
+                  <p className="sg-nota" style={{ marginTop: 10 }}>
+                    Mantente quieto, mirando a la cámara.
+                  </p>
+                </div>
+              ) : (
+                <div className="sg-paso">
+                  <span className={`sg-paso-ico${registrando ? '' : ' sg-neutro'}`}>
+                    {registrando ? (
+                      <LoaderCircle size={22} className="sg-gira" aria-hidden="true" />
+                    ) : (
+                      <Crosshair size={22} aria-hidden="true" />
+                    )}
+                  </span>
+                  <span className="sg-paso-txt">
+                    <strong>{estado.titulo}</strong>
+                    {estado.detalle && <small>{estado.detalle}</small>}
+                  </span>
+                </div>
+              )}
+            </section>
+          </>
+        )}
+      </main>
+
+      <Pie />
     </div>
   );
 }

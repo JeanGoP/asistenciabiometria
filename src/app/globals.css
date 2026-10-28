@@ -1,13 +1,50 @@
+/* Sistema visual de Síntesis Gestión.
+   Mismos colores, tipografía, radios, sombras y animaciones que la pantalla de
+   inicio de sesión de Síntesis Gestión (index.aspx, bloque .login-gestion),
+   donde esta app va incrustada en un iframe. Todas las clases usan el prefijo
+   sg- para no chocar con nada. */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --sg-navy: #003862;
+  --sg-navy-2: #00467a;
+  --sg-azul: #0074bc;
+  --sg-azul-hover: #005a91;
+  --sg-celeste: #188ce3;
+  --sg-azul-suave: #e6f1fa;
+
+  --sg-fondo: #f4f6f9;
+  --sg-superficie: #ffffff;
+  --sg-campo: #f8fafc;
+  --sg-gris: #f1f5f9;
+  --sg-borde: #e2e8f0;
+  --sg-borde-fuerte: #cbd5e1;
+
+  --sg-titulo: #0f172a;
+  --sg-texto: #334155;
+  --sg-etiqueta: #475569;
+  --sg-sub: #64748b;
+  --sg-tenue: #94a3b8;
+
+  --sg-ok: #15803d;
+  --sg-ok-fondo: #dcfce7;
+  --sg-alerta: #b45309;
+  --sg-alerta-fondo: #fef3c7;
+  --sg-peligro: #dc2626;
+  --sg-peligro-fondo: #fee2e2;
+
+  --sg-sombra: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 32px rgba(15, 23, 42, 0.08);
+  --sg-sombra-hover: 0 8px 20px rgba(15, 23, 42, 0.08);
+  --sg-anillo: 0 0 0 4px rgba(0, 116, 188, 0.14);
+  --sg-curva: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --sg-fuente: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
 }
 
 html,
@@ -17,16 +54,17 @@ body {
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
+  font-family: var(--sg-fuente);
+  color: var(--sg-texto);
+  background: var(--sg-fondo);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
+button,
+input {
+  font: inherit;
+  color: inherit;
 }
 
 a {
@@ -34,34 +72,929 @@ a {
   text-decoration: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
-}
-/* Scrollbar moderno (WebKit: Chrome, Edge, Safari) */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f2f6fa; /* gris muy claro */
-  border-radius: 10px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #90caf9, #64b5f6); /* azul suave degradado */
-  border-radius: 10px;
-  border: 2px solid #f2f6fa; /* crea espacio y suavidad */
+  background: var(--sg-borde-fuerte);
+  border-radius: 8px;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #64b5f6, #42a5f5); /* azul un poco más intenso al pasar el mouse */
-}
-
-/* Firefox */
 * {
-  scrollbar-width: thin; /* fino */
-  scrollbar-color: #90caf9 #f2f6fa; /* thumb azul / track gris claro */
+  scrollbar-width: thin;
+  scrollbar-color: var(--sg-borde-fuerte) transparent;
+}
+
+/* ── Animaciones ─────────────────────────────────────────────────────────── */
+
+@keyframes sg-sube {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sg-girar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes sg-brillo {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes sg-pulso {
+  from {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+}
+
+@keyframes sg-llenar {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+@keyframes sg-cabeza {
+  from {
+    transform: rotate(-9deg) translateX(-2px);
+  }
+  to {
+    transform: rotate(9deg) translateX(2px);
+  }
+}
+
+@keyframes sg-latido {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.12);
+  }
+}
+
+@keyframes sg-aparece {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* ── Estructura ──────────────────────────────────────────────────────────── */
+
+.sg-app {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--sg-fondo);
+}
+
+/* Encabezado azul con las franjas diagonales del login (versión celular). */
+.sg-cab {
+  position: relative;
+  overflow: hidden;
+  padding: 20px 20px 66px;
+  background: var(--sg-navy);
+  color: #fff;
+}
+
+.sg-cab-franjas {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  pointer-events: none;
+}
+
+.sg-cab-fila {
+  position: relative;
+  max-width: 448px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sg-marca {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+/* el PNG del logo trae mucho margen transparente: se recorta, igual que en el login */
+.sg-marca-logo {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.sg-marca-logo img {
+  flex: none;
+  width: 56px;
+}
+
+.sg-marca-nombre {
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.sg-marca-modulo {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.sg-version {
+  flex: none;
+  padding: 3px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.sg-cab-fecha {
+  position: relative;
+  max-width: 448px;
+  margin: 16px auto 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 18px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.sg-cab-fecha strong {
+  font-weight: 600;
+  color: #fff;
+}
+
+/* Columna de contenido montada sobre el encabezado (como el panel del login). */
+.sg-cuerpo {
+  position: relative;
+  z-index: 1;
+  flex: 1 0 auto;
+  width: 100%;
+  max-width: 480px;
+  margin: -46px auto 0;
+  padding: 0 16px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sg-panel {
+  position: relative;
+  background: var(--sg-superficie);
+  border: 1px solid var(--sg-borde);
+  border-radius: 18px;
+  box-shadow: var(--sg-sombra);
+  padding: 26px 22px 22px;
+  animation: sg-sube 0.55s var(--sg-curva) both;
+}
+
+.sg-panel + .sg-panel {
+  animation-delay: 0.08s;
+}
+
+.sg-panel-compacto {
+  padding: 14px;
+}
+
+.sg-pie {
+  margin-top: auto;
+  padding: 14px 16px 18px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--sg-tenue);
+}
+
+/* ── Tipografía ──────────────────────────────────────────────────────────── */
+
+.sg-titulo {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.3px;
+  color: var(--sg-titulo);
+}
+
+.sg-sub {
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--sg-sub);
+}
+
+.sg-etiqueta {
+  display: block;
+  margin: 22px 0 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--sg-etiqueta);
+}
+
+.sg-nota {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--sg-sub);
+  text-align: center;
+}
+
+.sg-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: var(--sg-azul-suave);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--sg-azul);
+}
+
+/* ── Campo de texto ──────────────────────────────────────────────────────── */
+
+.sg-campo {
+  position: relative;
+}
+
+.sg-campo-ico {
+  position: absolute;
+  top: 50%;
+  left: 15px;
+  transform: translateY(-50%);
+  color: var(--sg-tenue);
+  pointer-events: none;
+  transition: color 0.15s;
+}
+
+.sg-input {
+  width: 100%;
+  height: 50px;
+  padding: 0 14px 0 44px;
+  border: 1px solid var(--sg-borde);
+  border-radius: 12px;
+  background: var(--sg-campo);
+  /* 16px: iOS hace zoom al enfocar un campo más pequeño */
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: #1e293b;
+  outline: none;
+  -moz-appearance: textfield;
+  appearance: textfield;
+  transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
+}
+
+.sg-input::-webkit-outer-spin-button,
+.sg-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.sg-input::placeholder {
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--sg-tenue);
+}
+
+.sg-input:focus {
+  border-color: var(--sg-azul);
+  background: #fff;
+  box-shadow: var(--sg-anillo);
+}
+
+.sg-campo:focus-within .sg-campo-ico {
+  color: var(--sg-azul);
+}
+
+.sg-campo.sg-con-error .sg-input {
+  border-color: var(--sg-peligro);
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.12);
+}
+
+.sg-campo.sg-con-error .sg-campo-ico {
+  color: var(--sg-peligro);
+}
+
+.sg-msj-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sg-peligro);
+}
+
+/* ── Opciones de tipo de registro (mismo estilo que .lg-opcion del login) ─ */
+
+.sg-opciones {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sg-opciones.sg-una-columna {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.sg-opcion {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  padding: 12px;
+  border: 1px solid var(--sg-borde);
+  border-radius: 14px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s;
+  animation: sg-sube 0.5s var(--sg-curva) both;
+  animation-delay: calc(var(--i, 0) * 40ms + 100ms);
+}
+
+.sg-opcion:hover {
+  transform: translateY(-2px);
+  border-color: var(--sg-azul);
+  box-shadow: var(--sg-sombra-hover);
+}
+
+.sg-opcion:active {
+  transform: none;
+}
+
+.sg-opcion:focus-visible {
+  outline: 2px solid rgba(0, 116, 188, 0.4);
+  outline-offset: 2px;
+}
+
+.sg-opcion-ico {
+  flex: 0 0 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--sg-azul);
+  color: #fff;
+}
+
+/* fin / regreso: azul oscuro, para que cada par inicio-fin se lea de un vistazo */
+.sg-opcion-ico.sg-cierre {
+  background: var(--sg-navy);
+}
+
+.sg-opcion-txt {
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--sg-titulo);
+}
+
+.sg-esqueleto {
+  height: 64px;
+  border-radius: 14px;
+  background: linear-gradient(90deg, var(--sg-gris) 0%, #e8edf3 50%, var(--sg-gris) 100%);
+  background-size: 200% 100%;
+  animation: sg-brillo 1.4s ease-in-out infinite;
+}
+
+@media (max-width: 340px) {
+  .sg-opciones {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── Botones ─────────────────────────────────────────────────────────────── */
+
+.sg-boton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 48px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--sg-azul);
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+  transition: transform 0.15s, background-color 0.15s, border-color 0.15s;
+}
+
+.sg-boton:hover {
+  transform: translateY(-1px);
+  background: var(--sg-azul-hover);
+}
+
+.sg-boton:focus-visible {
+  outline: none;
+  box-shadow: var(--sg-anillo);
+}
+
+.sg-boton-sec {
+  border: 1px solid var(--sg-borde);
+  background: transparent;
+  color: var(--sg-azul);
+}
+
+.sg-boton-sec:hover {
+  border-color: var(--sg-borde-fuerte);
+  background: var(--sg-gris);
+  color: var(--sg-azul-hover);
+}
+
+/* ── Pantallas de estado (cargando, error, confirmación) ─────────────────── */
+
+.sg-estado {
+  padding: 34px 24px 26px;
+  text-align: center;
+}
+
+.sg-estado .sg-titulo {
+  font-size: 21px;
+}
+
+.sg-estado .sg-sub {
+  max-width: 320px;
+  margin: 6px auto 0;
+}
+
+.sg-estado .sg-boton {
+  margin-top: 24px;
+}
+
+.sg-estado-ico {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 20px;
+  border-radius: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: sg-aparece 0.5s var(--sg-curva) both;
+}
+
+.sg-estado-ico::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border: 2px solid currentColor;
+  border-radius: 26px;
+  animation: sg-pulso 1.8s ease-out infinite;
+}
+
+.sg-estado-ico.sg-ok {
+  background: var(--sg-ok-fondo);
+  color: var(--sg-ok);
+}
+
+.sg-estado-ico.sg-alerta {
+  background: var(--sg-alerta-fondo);
+  color: var(--sg-alerta);
+}
+
+.sg-estado-ico.sg-peligro {
+  background: var(--sg-peligro-fondo);
+  color: var(--sg-peligro);
+}
+
+.sg-estado-ico.sg-info {
+  background: var(--sg-azul-suave);
+  color: var(--sg-azul);
+}
+
+/* Cargando: anillo que gira alrededor del ícono */
+.sg-estado-ico.sg-cargando {
+  border-radius: 50%;
+}
+
+.sg-estado-ico.sg-cargando::after {
+  inset: -7px;
+  border: 3px solid var(--sg-borde);
+  border-top-color: var(--sg-azul);
+  border-radius: 50%;
+  animation: sg-girar 0.9s linear infinite;
+}
+
+.sg-barra {
+  height: 6px;
+  margin-top: 18px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--sg-gris);
+}
+
+.sg-barra > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--sg-azul);
+  transition: width 0.8s ease, background-color 0.3s;
+}
+
+.sg-barra.sg-urgente > span {
+  background: var(--sg-peligro);
+}
+
+/* barra que se llena en un tiempo fijo (--dur), sin estado de React */
+.sg-barra.sg-temporizada > span {
+  width: 0;
+  animation: sg-llenar var(--dur, 5s) linear forwards;
+}
+
+/* ── Vista de cámara ─────────────────────────────────────────────────────── */
+
+.sg-info {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.sg-dato {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sg-dato-ico {
+  flex: 0 0 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--sg-azul-suave);
+  color: var(--sg-azul);
+}
+
+.sg-dato small {
+  display: block;
+  font-size: 11.5px;
+  color: var(--sg-sub);
+}
+
+.sg-dato strong {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--sg-titulo);
+  overflow-wrap: anywhere;
+}
+
+.sg-tiempo {
+  margin-bottom: 10px;
+}
+
+.sg-tiempo-fila {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--sg-etiqueta);
+}
+
+.sg-tiempo-seg {
+  min-width: 34px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--sg-azul-suave);
+  text-align: center;
+  color: var(--sg-azul);
+}
+
+.sg-tiempo.sg-urgente .sg-tiempo-seg {
+  background: var(--sg-peligro-fondo);
+  color: var(--sg-peligro);
+}
+
+.sg-tiempo .sg-barra {
+  margin-top: 8px;
+}
+
+.sg-video {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #0b1a2a;
+}
+
+.sg-video video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sg-video canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.sg-video-cargando {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 0 24px;
+  background: rgba(0, 38, 66, 0.72);
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.sg-gira {
+  animation: sg-girar 0.9s linear infinite;
+}
+
+.sg-giro {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: sg-girar 0.9s linear infinite;
+}
+
+.sg-zona {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+}
+
+.sg-zona strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sg-zona small {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  opacity: 0.85;
+}
+
+.sg-zona.sg-dentro {
+  background: var(--sg-ok-fondo);
+  color: var(--sg-ok);
+}
+
+.sg-zona.sg-fuera {
+  background: var(--sg-peligro-fondo);
+  color: #b91c1c;
+}
+
+/* Tarjeta del paso actual (ubicarse, moverse, gesto, verificando) */
+.sg-paso {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.sg-paso-ico {
+  flex: 0 0 48px;
+  height: 48px;
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--sg-azul);
+  color: #fff;
+}
+
+.sg-paso-ico.sg-neutro {
+  background: var(--sg-gris);
+  color: var(--sg-sub);
+}
+
+.sg-paso-ico.sg-ok {
+  background: var(--sg-ok-fondo);
+  color: var(--sg-ok);
+}
+
+.sg-paso-ico svg.sg-anima-cabeza {
+  animation: sg-cabeza 0.9s ease-in-out infinite alternate;
+}
+
+.sg-paso-ico svg.sg-anima-latido {
+  animation: sg-latido 0.8s ease-in-out infinite alternate;
+}
+
+.sg-paso-txt {
+  min-width: 0;
+}
+
+.sg-paso-txt strong {
+  display: block;
+  font-size: 15.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--sg-titulo);
+}
+
+.sg-paso-txt small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--sg-sub);
+}
+
+.sg-paso-txt .sg-ceja {
+  margin: 0 0 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--sg-azul);
+}
+
+.sg-pasos {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--sg-borde);
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sg-pasos li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--sg-texto);
+}
+
+.sg-pasos-num {
+  flex: 0 0 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--sg-azul-suave);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--sg-azul);
+}
+
+.sg-pasos li.sg-consejo {
+  color: var(--sg-sub);
+}
+
+.sg-pasos li.sg-consejo .sg-pasos-num {
+  background: var(--sg-alerta-fondo);
+  color: var(--sg-alerta);
+}
+
+.sg-aviso {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--sg-alerta-fondo);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--sg-alerta);
+}
+
+/* Indicadores de estado en el registro biométrico */
+.sg-indicadores {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.sg-indicador {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: var(--sg-gris);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--sg-sub);
+}
+
+.sg-indicador.sg-ok {
+  background: var(--sg-ok-fondo);
+  color: var(--sg-ok);
+}
+
+.sg-indicador.sg-alerta {
+  background: var(--sg-alerta-fondo);
+  color: var(--sg-alerta);
+}
+
+.sg-consejos {
+  margin-top: 18px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sg-consejos li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--sg-texto);
+  animation: sg-sube 0.5s var(--sg-curva) both;
+  animation-delay: calc(var(--i, 0) * 50ms + 120ms);
+}
+
+.sg-consejos .sg-dato-ico {
+  flex-basis: 36px;
+  height: 36px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .sg-barra.sg-temporizada > span {
+    width: 100%;
+  }
 }
