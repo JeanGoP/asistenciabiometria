@@ -3,11 +3,11 @@ import { AppProvider } from '@/context/AppContext';
 
 // Tipografía: misma pila que el login de Síntesis Gestión ('Segoe UI',
 // system-ui…), definida en globals.css. Ya no se descarga Open Sans.
+// Ícono de la pestaña: src/app/icon.svg (isotipo de la app, convención de Next).
 
 export const metadata = {
   title: 'Control biométrico · Síntesis Gestión',
   description: 'Registro de asistencia con reconocimiento facial.',
-  icons: { icon: '/images/sintesis-logo.png' },
 };
 
 export const viewport = {

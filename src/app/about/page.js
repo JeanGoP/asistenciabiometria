@@ -1,5 +1,6 @@
 import { CircleCheck } from 'lucide-react';
 import { Cabecera, Pie } from '@/components/marca';
+import { MensajeFestivo } from '@/components/festivo';
 
 // Confirmación final del marcaje (también se muestra si el tipo de registro
 // ya estaba marcado hoy, o tras guardar un intento no reconocido).
@@ -14,6 +15,7 @@ export default function IngresoMarcado() {
           </div>
           <h1 className="sg-titulo">Registro realizado</h1>
           <p className="sg-sub">Tu registro de asistencia quedó guardado correctamente. ¡Hasta pronto!</p>
+          <MensajeFestivo />
         </section>
       </main>
       <Pie />

@@ -211,7 +211,7 @@ a {
   min-width: 0;
 }
 
-/* el PNG del logo trae mucho margen transparente: se recorta, igual que en el login */
+/* recuadro blanco del isotipo de la app (LogoIsotipo en components/marca.js) */
 .sg-marca-logo {
   flex: none;
   width: 42px;
@@ -224,9 +224,9 @@ a {
   overflow: hidden;
 }
 
-.sg-marca-logo img {
+.sg-marca-logo svg {
+  display: block;
   flex: none;
-  width: 56px;
 }
 
 .sg-marca-nombre {
@@ -984,6 +984,472 @@ a {
 .sg-consejos .sg-dato-ico {
   flex-basis: 36px;
   height: 36px;
+}
+
+/* ── Temporadas festivas (components/festivo.js) ─────────────────────────── */
+/* Todo vive en el encabezado y en la confirmación: nada sobre la cámara. Las
+   animaciones solo usan transform y opacity. */
+
+.sg-franja-1 {
+  fill: var(--sg-franja-1, #0074bc);
+}
+
+.sg-franja-2 {
+  fill: var(--sg-franja-2, #188ce3);
+}
+
+.sg-franja-3 {
+  fill: var(--sg-franja-3, #00467a);
+}
+
+.sg-cab[data-tema='halloween'] {
+  --sg-franja-1: #f97316;
+  --sg-franja-2: #a855f7;
+  --sg-festivo: #fdba74;
+}
+
+.sg-cab[data-tema='diciembre'],
+.sg-cab[data-tema='novena'],
+.sg-cab[data-tema='navidad'] {
+  --sg-franja-1: #dc2626;
+  --sg-franja-2: #16a34a;
+  --sg-festivo: #fca5a5;
+}
+
+.sg-cab[data-tema='velitas'] {
+  --sg-franja-1: #f59e0b;
+  --sg-franja-2: #fde047;
+  --sg-festivo: #fde047;
+}
+
+.sg-cab[data-tema='anionuevo'] {
+  --sg-franja-1: #f5b041;
+  --sg-franja-2: #e2e8f0;
+  --sg-festivo: #fcd34d;
+}
+
+.sg-cab[data-tema='amistad'] {
+  --sg-franja-1: #ec4899;
+  --sg-franja-2: #f9a8d4;
+  --sg-festivo: #f9a8d4;
+}
+
+.sg-cab[data-tema='independencia'] {
+  --sg-franja-1: #fcd116;
+  --sg-franja-2: #ce1126;
+  --sg-franja-3: #003893;
+  --sg-festivo: #fcd116;
+}
+
+.sg-cab-con-luces {
+  padding-top: 32px;
+}
+
+.sg-cab-extra {
+  position: relative;
+  max-width: 448px;
+  margin: 12px auto 0;
+}
+
+.sg-festivo-saludo {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px 5px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+  animation: sg-sube 0.6s var(--sg-curva) 0.3s both;
+}
+
+.sg-festivo-saludo svg {
+  color: var(--sg-festivo, #fff);
+}
+
+/* Accesorio sobre el logo */
+.sg-marca-logo-wrap {
+  position: relative;
+  flex: none;
+  display: flex;
+}
+
+.sg-accesorio {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  animation: sg-accesorio-entra 0.7s var(--sg-curva) 0.2s both;
+}
+
+.sg-accesorio svg {
+  display: block;
+}
+
+.sg-accesorio-calabaza {
+  right: -11px;
+  bottom: -9px;
+}
+
+.sg-accesorio-calabaza svg {
+  transform-origin: 50% 100%;
+  animation: sg-rebote 2.4s ease-in-out infinite;
+}
+
+.sg-calabaza-cara {
+  animation: sg-titila 1.6s ease-in-out infinite alternate;
+}
+
+.sg-accesorio-gorro {
+  left: -10px;
+  top: -17px;
+}
+
+.sg-accesorio-gorro svg {
+  transform-origin: 30% 90%;
+  animation: sg-balanceo 3s ease-in-out infinite alternate;
+}
+
+.sg-accesorio-fiesta {
+  right: -7px;
+  top: -18px;
+}
+
+.sg-accesorio-fiesta svg {
+  transform: rotate(16deg);
+}
+
+.sg-accesorio-corazon {
+  right: -7px;
+  bottom: -6px;
+}
+
+.sg-accesorio-corazon svg {
+  animation: sg-latido 0.8s ease-in-out infinite alternate;
+}
+
+.sg-accesorio-bandera {
+  right: -16px;
+  top: -13px;
+}
+
+.sg-bandera-tela {
+  transform-box: fill-box;
+  transform-origin: 0 50%;
+  animation: sg-ondea 1.4s ease-in-out infinite alternate;
+}
+
+/* Partículas del encabezado */
+.sg-particulas {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.sg-particula {
+  position: absolute;
+  top: -16px;
+  left: var(--x);
+  width: var(--tam);
+  height: var(--tam);
+  opacity: 0;
+  animation: sg-caer var(--dur) linear var(--retraso) infinite;
+  will-change: transform, opacity;
+}
+
+.sg-p-nieve {
+  border-radius: 50%;
+  background: #fff;
+}
+
+.sg-p-confeti {
+  width: calc(var(--tam) * 0.7);
+  height: calc(var(--tam) * 1.4);
+  border-radius: 1px;
+  background: var(--color);
+}
+
+.sg-p-chispa {
+  top: auto;
+  bottom: -10px;
+  border-radius: 50%;
+  background: #fde68a;
+  box-shadow: 0 0 6px 2px rgba(253, 230, 138, 0.55);
+  animation-name: sg-subir;
+}
+
+.sg-p-corazon {
+  top: auto;
+  bottom: -18px;
+  width: calc(var(--tam) * 2);
+  height: calc(var(--tam) * 1.8);
+  color: #f9a8d4;
+  animation-name: sg-subir;
+}
+
+.sg-p-murcielago {
+  top: var(--y);
+  left: -60px;
+  height: calc(var(--tam) * 0.45);
+  animation-name: sg-volar;
+  animation-timing-function: ease-in-out;
+}
+
+.sg-aleteo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  animation: sg-aleteo 0.22s ease-in-out infinite alternate;
+}
+
+/* Adornos fijos */
+.sg-adorno-telarana {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 76px;
+  height: 76px;
+  pointer-events: none;
+}
+
+.sg-arana-hilo {
+  transform-box: fill-box;
+  transform-origin: 50% 0;
+  animation: sg-hilo 2.6s ease-in-out infinite alternate;
+}
+
+.sg-arana {
+  animation: sg-arana 2.6s ease-in-out infinite alternate;
+}
+
+.sg-adorno-luces {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 26px;
+  display: flex;
+  justify-content: space-around;
+  padding: 0 6px;
+  pointer-events: none;
+}
+
+.sg-adorno-luces::before {
+  content: '';
+  position: absolute;
+  top: 5px;
+  left: 0;
+  right: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.sg-bombillo {
+  position: relative;
+  margin-top: 7px;
+  width: 8px;
+  height: 12px;
+  border-radius: 50% 50% 45% 45%;
+  background: var(--color);
+  box-shadow: 0 0 8px 2px color-mix(in srgb, var(--color) 55%, transparent);
+  animation: sg-titila 1.3s ease-in-out infinite alternate;
+}
+
+.sg-bombillo:nth-child(even) {
+  margin-top: 10px;
+}
+
+.sg-bombillo::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: 2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 1px;
+  background: #cbd5e1;
+}
+
+/* Mensaje alusivo en la confirmación del marcaje */
+.sg-festivo-mensaje {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 340px;
+  margin: 18px auto 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--sg-festivo-fondo, var(--sg-azul-suave));
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+  color: var(--sg-festivo-texto, var(--sg-azul));
+  animation: sg-sube 0.6s var(--sg-curva) 0.35s both;
+}
+
+.sg-festivo-mensaje svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.sg-festivo-mensaje strong {
+  font-weight: 600;
+}
+
+.sg-festivo-mensaje[data-tema='halloween'] {
+  --sg-festivo-fondo: #fff7ed;
+  --sg-festivo-texto: #9a3412;
+}
+
+.sg-festivo-mensaje[data-tema='diciembre'],
+.sg-festivo-mensaje[data-tema='novena'],
+.sg-festivo-mensaje[data-tema='navidad'] {
+  --sg-festivo-fondo: #fef2f2;
+  --sg-festivo-texto: #991b1b;
+}
+
+.sg-festivo-mensaje[data-tema='velitas'] {
+  --sg-festivo-fondo: #fffbeb;
+  --sg-festivo-texto: #92400e;
+}
+
+.sg-festivo-mensaje[data-tema='anionuevo'] {
+  --sg-festivo-fondo: #fefce8;
+  --sg-festivo-texto: #854d0e;
+}
+
+.sg-festivo-mensaje[data-tema='amistad'] {
+  --sg-festivo-fondo: #fdf2f8;
+  --sg-festivo-texto: #9d174d;
+}
+
+.sg-festivo-mensaje[data-tema='independencia'] {
+  --sg-festivo-fondo: #fefce8;
+  --sg-festivo-texto: #1e3a8a;
+}
+
+@keyframes sg-accesorio-entra {
+  from {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sg-rebote {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px) rotate(-4deg);
+  }
+}
+
+@keyframes sg-titila {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.5;
+  }
+}
+
+@keyframes sg-balanceo {
+  from {
+    transform: rotate(-24deg);
+  }
+  to {
+    transform: rotate(-10deg);
+  }
+}
+
+@keyframes sg-ondea {
+  from {
+    transform: skewY(0) scaleX(1);
+  }
+  to {
+    transform: skewY(-7deg) scaleX(0.93);
+  }
+}
+
+@keyframes sg-caer {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) rotate(0);
+  }
+  10%,
+  85% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--deriva), 240px, 0) rotate(540deg);
+  }
+}
+
+@keyframes sg-subir {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) scale(0.8);
+  }
+  15%,
+  70% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--deriva), -210px, 0) scale(1.1);
+  }
+}
+
+@keyframes sg-volar {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0);
+  }
+  8%,
+  90% {
+    opacity: 0.9;
+  }
+  50% {
+    transform: translate3d(calc(50vw + 30px), -18px, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(calc(100vw + 120px), 6px, 0);
+  }
+}
+
+@keyframes sg-aleteo {
+  from {
+    transform: scaleY(1);
+  }
+  to {
+    transform: scaleY(0.45);
+  }
+}
+
+@keyframes sg-hilo {
+  from {
+    transform: scaleY(1);
+  }
+  to {
+    transform: scaleY(0.75);
+  }
+}
+
+@keyframes sg-arana {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-8.5px);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

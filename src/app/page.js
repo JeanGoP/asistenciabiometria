@@ -1016,7 +1016,8 @@ export default function Home() {
 
   return (
     <div className="sg-app">
-      <Cabecera />
+      {/* sin partículas festivas durante el marcaje: no compiten con el reconocimiento */}
+      <Cabecera animado={!iniciarProceso} />
 
       {/* ── PANTALLA INICIO ─────────────────────────────────────────────── */}
       {!iniciarProceso && (

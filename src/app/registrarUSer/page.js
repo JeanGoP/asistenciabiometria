@@ -339,7 +339,7 @@ export default function RegistrarUsuario() {
 
   return (
     <div className="sg-app">
-      <Cabecera modulo="Registro biométrico" />
+      <Cabecera modulo="Registro biométrico" animado={!mostrarCamara || registrado} />
 
       <main className="sg-cuerpo">
         {registrado ? (
