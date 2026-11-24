@@ -4,6 +4,47 @@ import * as faceapi from 'face-api.js';
 // por sesión del navegador, sin importar reinicios de cámara o navegación.
 let modelosPromise = null; // detector + landmarks (completo y tiny) + descriptor (+ warm-up completo)
 let expresionesPromise = null; // red de expresiones: carga en segundo plano
+let origenPromise = null;
+
+// Los pesos pueden venir de jsDelivr (CDN con servidores cercanos al usuario)
+// o del propio servidor: los de la CDN son los archivos oficiales de
+// face-api.js 0.22.2, idénticos byte a byte a los de public/models, así que
+// las huellas no cambian venga de donde venga.
+const MODELOS_CDN = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
+const MODELOS_LOCAL = '/models';
+
+// Pide a ambas fuentes el manifiesto más pequeño y usa la que responda
+// primero: donde el servidor propio es lento (p. ej. Render desde la oficina)
+// gana la CDN; donde la CDN está bloqueada, gana el servidor sin esperar.
+function origenModelos() {
+  if (!origenPromise) {
+    const probar = async (base) => {
+      const res = await fetch(`${base}/tiny_face_detector_model-weights_manifest.json`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return base;
+    };
+    origenPromise = Promise.any([probar(MODELOS_CDN), probar(MODELOS_LOCAL)])
+      .catch(() => MODELOS_LOCAL)
+      .then((origen) => {
+        console.log(`[biometria] modelos desde ${origen === MODELOS_CDN ? 'la CDN (jsDelivr)' : 'el servidor propio'}`);
+        if (typeof window !== 'undefined') window.__modelosOrigen = origen;
+        return origen;
+      });
+  }
+  return origenPromise;
+}
+
+// Carga una red desde el origen elegido y, si la CDN falla a mitad de camino,
+// desde el servidor.
+async function cargarRed(red) {
+  const origen = await origenModelos();
+  try {
+    await red.loadFromUri(origen);
+  } catch (err) {
+    if (origen === MODELOS_LOCAL) throw err;
+    await red.loadFromUri(MODELOS_LOCAL);
+  }
+}
 
 // Rostro sintético dibujado con primitivas de canvas — NO es una fotografía de
 // ninguna persona. Su único propósito es provocar la compilación de los
@@ -125,12 +166,12 @@ export function cargarModelos() {
   if (!modelosPromise) {
     const t0 = performance.now();
     modelosPromise = Promise.all([
-      faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
-      faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
+      cargarRed(faceapi.nets.tinyFaceDetector),
+      cargarRed(faceapi.nets.faceLandmark68Net),
       // Landmarks tiny (~77 KB): solo para el ciclo de detección por frame. La
       // huella final y el reto "Sonreír" siguen usando el modelo completo.
-      faceapi.nets.faceLandmark68TinyNet.loadFromUri('/models'),
-      faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
+      cargarRed(faceapi.nets.faceLandmark68TinyNet),
+      cargarRed(faceapi.nets.faceRecognitionNet),
     ])
       .then(async () => {
         console.log(`[biometria] modelos base cargados en ${Math.round(performance.now() - t0)} ms`);
@@ -154,8 +195,7 @@ export function cargarModelos() {
 
 export function cargarExpresiones() {
   if (!expresionesPromise) {
-    expresionesPromise = faceapi.nets.faceExpressionNet
-      .loadFromUri('/models')
+    expresionesPromise = cargarRed(faceapi.nets.faceExpressionNet)
       .then(async () => {
         try {
           const c = document.createElement('canvas');

@@ -1136,7 +1136,7 @@ export default function Home() {
       {iniciarProceso && !loadingInit && (
         <main className="sg-cuerpo">
           <section className="sg-panel sg-panel-compacto">
-            <div className="sg-info">
+            <div className="sg-datos-jornada">
               <div className="sg-dato">
                 <span className="sg-dato-ico">
                   <Building2 size={17} aria-hidden="true" />
